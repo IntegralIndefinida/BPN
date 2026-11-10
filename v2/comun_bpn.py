@@ -68,19 +68,11 @@ PESO_GRUPO_ETQ = {
 }
 EDAD6_ETQ = {1: "Menos de 20", 2: "20-24", 3: "25-29", 4: "30-34",
              5: "35-39", 6: "40 y más"}
-EDAD3_ETQ = {1: "Menos de 20", 2: "20-34", 3: "35 y más"}
 EDUC4_ETQ = {1: "Ninguno o preescolar", 2: "Primaria",
              3: "Secundaria o media", 4: "Superior",
              9: "Sin información"}
 REGIMEN_ETQ = {1: "Contributivo, excepción o especial", 2: "Subsidiado",
                3: "No asegurado", 9: "Sin información"}
-ALT_CAT_ETQ = {1: "0-499 m", 2: "500-999 m", 3: "1.000-1.499 m",
-               4: "1.500-1.999 m", 5: "2.000-2.499 m", 6: "2.500 m o más",
-               9: "Sin información"}
-
-# Altiplano oriental + Nariño (exclusión del objetivo 4: Bogotá, Boyacá,
-# Cundinamarca y Nariño).
-ALTIPLANO = [11, 15, 25, 52]
 
 # --------------------------------------------------------------------------- #
 # 2. LOG: imita el log del do-file (consola + archivo en SALIDAS)
@@ -155,7 +147,7 @@ _MAP_REGIMEN = {
 }
 
 _CUENTAS = ["n", "con_peso", "bpn_n", "n_term", "bpn_term_n", "reg_conocido",
-            "n_nocontrib", "n_sub", "edu_conocido", "n_bajaedu", "n_imp_alt"]
+            "n_nocontrib", "n_sub", "edu_conocido", "n_bajaedu"]
 
 
 def _armonizar(anio: int) -> pd.DataFrame:
@@ -203,10 +195,6 @@ def _armonizar(anio: int) -> pd.DataFrame:
         "educ4": educ4, "regimen": regimen, "edad6": edad6,
     }).merge(alt, on="cod_mpio", how="left")
 
-    # Municipio sin altitud en el CSV (código missing o no hallado): candidato
-    # a imputación solo si el dpto es válido (igual que alt_imputada).
-    alt_imputada = df["altitud_m"].isna() & df["dpto_res"].gt(0)
-
     x = pd.concat([df.reset_index(drop=True),
                    pd.DataFrame({
         "n": np.ones(len(df)),
@@ -219,7 +207,6 @@ def _armonizar(anio: int) -> pd.DataFrame:
         "n_sub": df["regimen"].eq(2).to_numpy(dtype=float),
         "edu_conocido": df["educ4"].notna().to_numpy(dtype=float),
         "n_bajaedu": df["educ4"].isin([1, 2]).to_numpy(dtype=float),
-        "n_imp_alt": alt_imputada.to_numpy(dtype=float),
     }).reset_index(drop=True)], axis=1)
     celdas = (x.groupby(["anio", "dpto_res", "cod_mpio", "educ4", "regimen",
                          "edad6", "altitud_m"], observed=True, dropna=False)
@@ -293,7 +280,7 @@ def cargar_celdas(anios=None, refrescar: bool = False) -> pd.DataFrame:
             m = json.loads(meta.read_text())
             print(f"  {anio}: celdas en caché ({m['celdas']:,})")
             registro.append({"anio": anio, "archivo": m["archivo"],
-                             "registros": m["registros"], "tipo_peso": "grupos"})
+                             "registros": m["registros"]})
         else:
             t0 = time.time()
             c = _armonizar(anio)
@@ -304,7 +291,7 @@ def cargar_celdas(anios=None, refrescar: bool = False) -> pd.DataFrame:
             print(f"  {anio}: {len(c):,} celdas en {time.time() - t0:.1f}s "
                   f"({m['registros']:,} registros)")
             registro.append({"anio": anio, "archivo": m["archivo"],
-                             "registros": m["registros"], "tipo_peso": "grupos"})
+                             "registros": m["registros"]})
         partes.append(pd.read_parquet(destino))
 
     reg_nuevo = pd.DataFrame(registro).assign(anio=lambda r: r["anio"].astype(int))
@@ -383,19 +370,6 @@ def apc_poisson(df: pd.DataFrame, ini: int = ANIO_INI, fin: int = ANIO_FIN) -> d
 # --------------------------------------------------------------------------- #
 # 5. EXPORT Y GRÁFICOS
 # --------------------------------------------------------------------------- #
-def exportar_hoja(df: pd.DataFrame, ruta_xlsx: str, hoja: str,
-                  nuevo: bool = False) -> None:
-    """Escribe/agrega una hoja al xlsx de resultados (SALIDAS)."""
-    SALIDAS.mkdir(parents=True, exist_ok=True)
-    ruta = SALIDAS / ruta_xlsx
-    if nuevo and ruta.exists():
-        ruta.unlink()
-    modo = "w" if not ruta.exists() else "a"
-    with pd.ExcelWriter(ruta, engine="openpyxl", mode=modo,
-                        if_sheet_exists="replace" if modo == "a" else None) as xl:
-        df.to_excel(xl, sheet_name=hoja, index=False)
-
-
 def exportar_excel_nuevo(dfs: dict[str, pd.DataFrame], ruta_xlsx: str) -> None:
     """Escribe un libro completo de una vez (hojas en el orden del dict)."""
     SALIDAS.mkdir(parents=True, exist_ok=True)
