@@ -7,7 +7,7 @@
 #  Objetivo 4: desigualdades socioeconómicas del BPN entre departamentos con
 #  curvas e índices de concentración (C, Wagstaff W y Erreygers E), ponderados
 #  por nacidos. Ordenamiento principal: % de madres NO afiliadas al régimen
-#  contributivo (243 10 variantes). Regresión conveniente de Kakwani et al.
+#  contributivo (10 variantes). Regresión conveniente de Kakwani et al.
 #  (1997). Inferencia: bootstrap por departamento (1.000 réplicas; pareado
 #  para la diferencia entre trienios). Estandarización indirecta por altitud
 #  del municipio y edad materna.
@@ -22,6 +22,7 @@
 import numpy as np
 import pandas as pd
 import statsmodels.api as sm
+from scipy.stats import norm
 
 import comun_bpn as cb
 
@@ -30,7 +31,7 @@ ANIO_INI, ANIO_FIN = 2008, 2024          # el régimen es comparable desde 2008
 REPS = 1_000                             # réplicas bootstrap
 SEMILLA = 20241
 
-# Variantes: (nombre, gracioso h, weight w, orden rango, condición)
+# Variantes: (nombre, indicador h, ponderación w, orden rango, condición)
 variantes = [
     ("Principal", "pct_bpn", "con_peso", "ses_nc", None),
     ("Estandarizado por altitud y edad materna", "pct_is", "n_s", "ses_nc", None),
@@ -55,25 +56,16 @@ V_SIN_BOGOTA = 3
 # --------------------------------------------------------------------------- #
 def panel_obj4(celdas: pd.DataFrame) -> pd.DataFrame:
     d = celdas[celdas["dpto_res"].gt(0) & celdas["anio"].between(ANIO_INI, ANIO_FIN)]
-    # Estandarización indirecta: tasa observada por (anio, alt_cat, edad6),
-    # replicando el bysort anio alt_cat edad6: egen p_celda = mean(bpn)
-    en_edad = d[d["edad6"].notna()]
-    grupo_std = (d.groupby(["anio", "alt_cat", "edad6"])
-                 .agg(b=("bpn_n", "sum"), nstd=("con_peso", "sum")))
-    grupo_std["p_celda"] = grupo_std["b"] / grupo_std["nstd"]
-    esperado = en_edad.merge(
-        grupo_std.reset_index()[["anio", "alt_cat", "edad6", "p_celda"]],
-        on=["anio", "alt_cat", "edad6"], how="left")
-    esperado["esperado_s"] = (esperado["p_celda"]
-                              * esperado["con_peso"]).fillna(0.0)
-    esperado = esperado.rename(columns={"con_peso": "n_s", "bpn_n": "casos_s"})
-
     d = d.rename(columns={"n": "nacidos"})
-    d = d.merge(esperado[["anio", "dpto_res", "cod_mpio", "educ4", "regimen",
-                          "edad6", "n_s", "casos_s", "esperado_s"]],
-                on=["anio", "dpto_res", "cod_mpio", "educ4", "regimen", "edad6"],
-                how="left")
-    d.loc[d["edad6"].isna(), ["n_s", "casos_s", "esperado_s"]] = 0.0
+    # Estandarización indirecta: tasa observada por (anio, alt_cat, edad6),
+    # replicando el bysort anio alt_cat edad6: egen p_celda = mean(bpn).
+    # Celdas sin edad (o sin alt_cat) quedan fuera: n_s, casos_s y esperado_s = 0.
+    g = d.groupby(["anio", "alt_cat", "edad6"])
+    p_celda = g["bpn_n"].transform("sum") / g["con_peso"].transform("sum")
+    con_edad = d["edad6"].notna()
+    d = d.assign(n_s=d["con_peso"].where(con_edad, 0.0),
+                 casos_s=d["bpn_n"].where(con_edad, 0.0),
+                 esperado_s=(p_celda * d["con_peso"]).fillna(0.0))
     # Altitud media del dpto-año (ponderada por nacimientos) y nacidos a >=2.000 m
     d = d.assign(n_alt=d["nacidos"] * d["altitud_m"].fillna(0.0).to_numpy(),
                  n_alto=d["nacidos"].where(d["alt_cat"].astype(float) >= 5, 0.0))
@@ -231,13 +223,8 @@ def C_anual_bootstrap(panel: pd.DataFrame) -> pd.DataFrame:
             print(f"  {anio} - {nombre}: C = {punto['C']:.4f}  "
                   f"EE bootstrap = {bs['se_C']:.4f}")
     d = pd.DataFrame(filas)
-    d["p"] = 2 * _sf(np.abs(d["C"] / d["se_bs"]))
+    d["p"] = 2 * norm.sf(np.abs(d["C"] / d["se_bs"]))
     return d
-
-
-def _sf(z):
-    from scipy.stats import norm
-    return norm.sf(z)
 
 
 # --------------------------------------------------------------------------- #
@@ -279,7 +266,7 @@ def C_trienios(trienios: pd.DataFrame) -> pd.DataFrame:
                           "E": punto["E"], "se_E": bs["se_E"],
                           "mu": punto["mu"], "N": punto["N"]})
     d = pd.DataFrame(filas)
-    d["p"] = 2 * _sf(np.abs(d["C"] / d["se_bs"]))
+    d["p"] = 2 * norm.sf(np.abs(d["C"] / d["se_bs"]))
     return d[["variante", "trienio", "N", "mu", "C", "se_reg", "se_bs", "li",
               "ls", "p", "W", "se_W", "E", "se_E"]]
 
@@ -316,7 +303,7 @@ def diferencia_trienios(trienios: pd.DataFrame) -> pd.DataFrame:
         se = dif_b.std(ddof=1)
         filas.append({"variante": nombre, "C1": c1, "C2": c2, "dif": d_obs,
                       "se_bs": se, "li": d_obs - 1.96 * se,
-                      "ls": d_obs + 1.96 * se, "p": 2 * _sf(abs(d_obs / se))})
+                      "ls": d_obs + 1.96 * se, "p": 2 * norm.sf(abs(d_obs / se))})
         print(f"  {nombre}: cambio en C = {d_obs:.4f}  EE = {se:.4f}")
     return pd.DataFrame(filas)
 
@@ -364,7 +351,7 @@ def curvas_hasta(trienios: pd.DataFrame) -> pd.DataFrame:
         ["muestra", "periodo", "x"]).reset_index(drop=True)
 
 
-def _C_trienio(t: pd.DataFrame, m: int, p: int, C_trienios_df: pd.DataFrame) -> str:
+def _C_trienio(C_trienios_df: pd.DataFrame, m: int, p: int) -> str:
     noms = [variantes[V_PRINCIPAL - 1][0], variantes[V_SIN_BOGOTA - 1][0],
             variantes[V_ESTAND - 1][0]]
     etq = "2008-2010" if p == 1 else "2022-2024"
@@ -395,15 +382,7 @@ def grafico_curvas(d: pd.DataFrame, t: pd.DataFrame) -> None:
                                 textcoords="offset points", fontsize=8,
                                 color="#C00000")
         ax.text(0.07, 0.88, texto_C, fontsize=10, transform=ax.transAxes)
-        ax.set_title(titulo, fontsize=11)
-        ax.set_xlim(0, 100)
-        ax.set_ylim(0, 100)
-        ax.set_aspect("equal")
-        ax.set_xticks(range(0, 101, 10))
-        ax.set_yticks(range(0, 101, 10))
-        ax.set_xlabel("% acumulado de nacidos vivos\n"
-                      "(departamentos del más pobre al menos pobre)", fontsize=8.5)
-        ax.set_ylabel("% acumulado de casos\nde bajo peso al nacer", fontsize=8.5)
+        axial_estilado(ax, titulo)
 
     periodos = [(1, "2008-2010"), (2, "2022-2024")]
 
@@ -411,7 +390,7 @@ def grafico_curvas(d: pd.DataFrame, t: pd.DataFrame) -> None:
     fig, ejes = plt.subplots(1, 2, figsize=(10, 5.4))
     for ax, (p, etq) in zip(ejes, periodos):
         axial(ax, 1, p, {"area": "#FFE699", "linea": "#08306B"}, etq,
-              f"C = {_C_trienio(t, 1, p, t)}", puntos=True, rotul=True)
+              f"C = {_C_trienio(t, 1, p)}", puntos=True, rotul=True)
     fig.suptitle("Curvas de concentración del bajo peso al nacer en Colombia",
                  fontsize=12)
     fig.text(0.01, 0.005, "Ordenamiento: % de madres no afiliadas al régimen\n"
@@ -429,7 +408,7 @@ def grafico_curvas(d: pd.DataFrame, t: pd.DataFrame) -> None:
         d_c = d[(d["muestra"] == 1) & (d["periodo"] == p)]
         ax.plot(d_c["x"], d_c["y"], color=c, ls="--" if p == 1 else "-",
                 lw=2.2,
-                label=f"{etq} (C = {_C_trienio(t, 1, p, t)})")
+                label=f"{etq} (C = {_C_trienio(t, 1, p)})")
     ax.plot([0, 100], [0, 100], color="black", lw=1.4, label="Igualdad")
     axial_estilado(ax, "Curvas de concentración del bajo peso al nacer")
     ax.legend(fontsize=8.5, loc="lower right")
@@ -441,7 +420,7 @@ def grafico_curvas(d: pd.DataFrame, t: pd.DataFrame) -> None:
     fig, ejes = plt.subplots(1, 2, figsize=(10, 5.4))
     for ax, (p, etq) in zip(ejes, periodos):
         axial(ax, 2, p, {"area": "#FDD07A", "linea": "#A63603"}, etq,
-              f"C = {_C_trienio(t, 2, p, t)}", puntos=True)
+              f"C = {_C_trienio(t, 2, p)}", puntos=True)
     fig.suptitle("Curvas de concentración del bajo peso al nacer, sin Bogotá D.C.",
                  fontsize=12)
     fig.text(0.01, 0.005, "32 departamentos. Ordenamiento: % de madres no afiliadas\n"
@@ -458,7 +437,7 @@ def grafico_curvas(d: pd.DataFrame, t: pd.DataFrame) -> None:
               puntos=True)
         d2 = d[(d["muestra"] == 2) & (d["periodo"] == p)]
         ax.plot(d2["x"], d2["y"], color="#A63603", ls="--", lw=2.2)
-        C1, C2 = _C_trienio(t, 1, p, t), _C_trienio(t, 2, p, t)
+        C1, C2 = _C_trienio(t, 1, p), _C_trienio(t, 2, p)
         ax.legend(handles=[
             plt.Line2D([], [], color="#08306B", lw=2.4, label=f"Con Bogotá (C = {C1})"),
             plt.Line2D([], [], color="#A63603", ls="--", lw=2.2,
@@ -479,7 +458,7 @@ def grafico_curvas(d: pd.DataFrame, t: pd.DataFrame) -> None:
         axial(ax, 1, p, {"area": "#FFE699", "linea": "#08306B"}, etq, "", puntos=True)
         d3 = d[(d["muestra"] == 3) & (d["periodo"] == p)]
         ax.plot(d3["x"], d3["y"], color="#006D2C", ls="--", lw=2.2)
-        C1, C3 = _C_trienio(t, 1, p, t), _C_trienio(t, 3, p, t)
+        C1, C3 = _C_trienio(t, 1, p), _C_trienio(t, 3, p)
         ax.legend(handles=[
             plt.Line2D([], [], color="#08306B", lw=2.4, label=f"Observada (C = {C1})"),
             plt.Line2D([], [], color="#006D2C", ls="--", lw=2.2,
