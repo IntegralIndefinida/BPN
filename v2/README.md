@@ -45,7 +45,7 @@ Ningún módulo escribe archivos por su cuenta: eso lo hace `correr.py`.
 | `sintesis.ipynb` | síntesis del análisis: recalcula y muestra tablas y gráficos |
 | `comun_bpn.py` | rutas, etiquetas, carga con `dd.eevv`, celdas de conteos, imputación de altitud, caché, helpers (Wilson, APC Poisson, Excel, gráficos, log) |
 | `obj1_evolucion.py` | prevalencia nacional (cruda y estandarizada), APC, departamentos, calidad del registro del peso, sexo, distribución del peso, descomposición de la tendencia por semanas de gestación (Kitagawa), G1 y G12–G14 |
-| `obj2_desigualdades.py` | RP/DP por quinquenio y año frente a la referencia elegible, Theil/MLD, PAR/PAF, extremos, todo en versión cruda y ajustada por altitud y edad (hojas `_aj`), con IC 95 %; G7/G8 (crudos) |
+| `obj2_desigualdades.py` | RP/DP por quinquenio y año frente a la referencia elegible, Theil/MLD, PAR/PAF, extremos, todo en versión cruda y ajustada por altitud y edad (hojas `_aj`), con IC 95 %; G7/G8 comparan las dos versiones |
 | `obj3_educacion.py` | prevalencias por educación y régimen, Poisson M0–M5 con errores cluster dpto (principal: M4, con altitud y efectos fijos de departamento; M5 = M4 con BPN a término), RII/SII con ese ajuste por quinquenio y cotas extremas por educación faltante, G9/G10 |
 | `obj4_concentracion.py` | estandarización indirecta por altitud y edad, índices C/W/E por regresión conveniente (Kakwani), 10 variantes, bootstrap por departamento, trienios 2008-2010 vs 2022-2024 con bootstrap pareado, curvas G3–G6/G11, G2 |
 

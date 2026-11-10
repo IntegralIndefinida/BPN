@@ -25,6 +25,7 @@ MIN_QUINQ = 10_000     # nacidos con peso conocido en el quinquenio
 MIN_ANUAL = 2_000      # nacidos con peso conocido en el año
 MAX_FALT = 5           # % máximo de nacimientos sin información de peso
 QUINQ_ETQ = {1: "2005-2009", 2: "2010-2014", 3: "2015-2019", 4: "2020-2024"}
+AZUL, NARANJA = "#08519C", "#A63603"   # par verificado para daltonismo
 
 
 # --------------------------------------------------------------------------- #
@@ -225,60 +226,68 @@ def medidas_resumen(panel: pd.DataFrame) -> pd.DataFrame:
 # --------------------------------------------------------------------------- #
 # G7. Dot plot de RP por departamento, primer y último quinquenio
 # --------------------------------------------------------------------------- #
-def grafico_g7(ancho: pd.DataFrame):
+def grafico_g7(ancho: pd.DataFrame, ancho_aj: pd.DataFrame):
+    """Dos paneles con el mismo eje y el mismo orden (el de la RP ajustada del
+    último quinquenio): prevalencia cruda y ajustada por altitud y edad."""
     import matplotlib.pyplot as plt
-    d = (ancho[["departamento", "rt1", "rt4"]]
-         .sort_values(["rt4", "rt1"], ascending=[False, False])
-         .reset_index(drop=True))
-    y = range(len(d))
-    fig, ax = plt.subplots(figsize=(6, 7))
-    ax.hlines(y, d["rt4"], d["rt1"], color="#DDDDDD", lw=1, zorder=1)
-    ax.scatter(d["rt1"], y, facecolor="none", edgecolor="#666666", s=28,
-               label="2005-2009", zorder=2)                    # O hueco
-    ax.scatter(d["rt4"], y, marker="D", color="#08306B", s=24,
-               label="2020-2024", zorder=3)
-    ax.axvline(1, color="#999999", ls="--", lw=1)
-    ax.set_yticks(list(y))
-    ax.set_yticklabels(d["departamento"], fontsize=6.5)
-    ax.set_xlabel("Razón de prevalencias frente a la referencia")
-    ax.set_title("Razón de prevalencias de BPN por departamento", fontsize=12)
-    ax.invert_yaxis()
-    ax.legend(loc="lower right", fontsize=9)
-    ax.annotate("Referencia: menor prevalencia entre departamentos con >=10.000\n"
-                "nacidos con peso y <=5 % sin información de peso en el quinquenio.\n"
-                "Fuente: DANE, EEVV.",
-                xy=(0, -0.12), xycoords="axes fraction", ha="left", fontsize=7)
-    fig.tight_layout()
+    orden = ancho_aj.sort_values(["rt4", "rt1"], ascending=False)["departamento"]
+    y = range(len(orden))
+    fig, ejes = plt.subplots(1, 2, figsize=(9, 7), sharex=True, sharey=True)
+    for ax, tabla, titulo in [(ejes[0], ancho, "Cruda"),
+                              (ejes[1], ancho_aj, "Ajustada por altitud y edad materna")]:
+        d = tabla.set_index("departamento").loc[orden]
+        ax.hlines(y, d["rt4"], d["rt1"], color="#DDDDDD", lw=1, zorder=1)
+        ax.scatter(d["rt1"], y, facecolor="none", edgecolor="#666666", s=28,
+                   label="2005-2009", zorder=2)                    # O hueco
+        ax.scatter(d["rt4"], y, marker="D", color=AZUL, s=24,
+                   label="2020-2024", zorder=3)
+        ax.axvline(1, color="#999999", ls="--", lw=1)
+        ax.set_xlabel("Razón de prevalencias frente a la referencia")
+        ax.set_title(titulo, fontsize=10.5)
+    ejes[0].set_yticks(list(y))
+    ejes[0].set_yticklabels(orden, fontsize=6.5)
+    ejes[0].invert_yaxis()
+    ejes[1].legend(loc="lower right", fontsize=9)
+    fig.suptitle("Razón de prevalencias de BPN por departamento", fontsize=12)
+    fig.text(0.01, 0.005,
+             "Referencia: menor prevalencia entre departamentos con >=10.000 nacidos "
+             "con peso y <=5 % sin información de peso en el quinquenio.\n"
+             "Departamentos ordenados por la razón ajustada de 2020-2024. "
+             "Fuente: DANE, EEVV. Cálculos propios.", fontsize=7)
+    fig.tight_layout(rect=(0, 0.04, 1, 1))
     return fig
 
 
 # --------------------------------------------------------------------------- #
-# G8. Theil y PAF anuales (eje dual)
+# G8. Theil y PAF anuales, crudos y ajustados (un panel por medida: sin eje
+#     doble, que inventa una relación entre dos escalas arbitrarias)
 # --------------------------------------------------------------------------- #
-def grafico_g8(resumen: pd.DataFrame):
+def grafico_g8(resumen: pd.DataFrame, resumen_aj: pd.DataFrame):
     import matplotlib.pyplot as plt
-    d = (resumen[resumen["tipo"].eq("Año")]
-         .assign(anio=lambda t: t["periodo"].astype(int))
-         [["anio", "theil", "paf"]])
-    fig, ax = plt.subplots(figsize=(8, 5))
-    ax2 = ax.twinx()
-    ax.plot(d["anio"], d["theil"], color="#08306B", marker="o", ms=4,
-            label="Theil (eje izq.)")
-    ax2.plot(d["anio"], d["paf"], color="#A63603", ls="--", marker="D", ms=4,
-             label="PAF (eje der.)")
-    ax.set_xticks(range(2005, 2025, 2))
-    ax.set_ylabel("Índice de Theil (x1000)")
-    ax2.set_ylabel("PAF (%)")
-    ax.set_title("Desigualdad departamental del BPN, 2005-2024", fontsize=12)
-    h1, l1 = ax.get_legend_handles_labels()
-    h2, l2 = ax2.get_legend_handles_labels()
-    ax.legend(h1 + h2, l1 + l2, loc="upper left", fontsize=9)
-    ax.annotate("Theil ponderado por nacidos con peso conocido. PAF frente a la "
-                "referencia anual elegible.\nFuente: DANE, Estadísticas Vitales. "
-                "Cálculos propios.", xy=(1, -0.14), xycoords="axes fraction",
-                ha="right", fontsize=7, va="top")
-    ax2.grid(False)
-    fig.tight_layout()
+    fig, ejes = plt.subplots(1, 2, figsize=(10, 4.8), sharex=True)
+    for ax, col, titulo, eje in [
+            (ejes[0], "theil", "Dispersión entre departamentos", "Índice de Theil (x1000)"),
+            (ejes[1], "paf", "Fracción atribuible poblacional", "PAF (%)")]:
+        for tabla, nombre, color, trazo, marca in [
+                (resumen, "Cruda", AZUL, "-", "o"),
+                (resumen_aj, "Ajustada por altitud y edad materna", NARANJA, "--", "D")]:
+            d = (tabla[tabla["tipo"].eq("Año")]
+                 .assign(anio=lambda t: t["periodo"].astype(int)))
+            ax.fill_between(d["anio"], d[f"{col}_li"], d[f"{col}_ls"], color=color,
+                            alpha=0.18, lw=0)
+            ax.plot(d["anio"], d[col], color=color, ls=trazo, marker=marca, ms=4,
+                    lw=2, label=nombre)
+        ax.set_ylim(bottom=0)
+        ax.set_xticks(range(2005, 2025, 3))
+        ax.set_ylabel(eje)
+        ax.set_title(titulo, fontsize=10.5)
+    ejes[0].legend(loc="lower left", fontsize=8.5)
+    fig.suptitle("Desigualdad departamental del BPN, 2005-2024", fontsize=12)
+    fig.text(0.01, 0.005,
+             "Theil ponderado por nacidos con peso conocido. PAF frente a la referencia "
+             "anual elegible. Bandas: IC 95 % por simulación binomial.\n"
+             "Fuente: DANE, Estadísticas Vitales. Cálculos propios.", fontsize=7)
+    fig.tight_layout(rect=(0, 0.05, 1, 1))
     return fig
 
 
@@ -333,5 +342,7 @@ def imprimir(r: dict) -> None:
 
 def graficos(r: dict) -> dict:
     cb.iniciar_estilo()
-    return {"G7_RP_departamentos_quinquenios": grafico_g7(r["RP_DP_ancho"]),
-            "G8_Theil_PAF_anual": grafico_g8(r["Medidas_resumen"])}
+    return {"G7_RP_departamentos_quinquenios": grafico_g7(r["RP_DP_ancho"],
+                                                           r["RP_DP_ancho_aj"]),
+            "G8_Theil_PAF_anual": grafico_g8(r["Medidas_resumen"],
+                                             r["Medidas_resumen_aj"])}
