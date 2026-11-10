@@ -132,7 +132,7 @@ def resumen_desig(d: pd.DataFrame, periodo: str, tipo: str) -> dict:
         rt_el = dt_el = np.nan
     else:
         nref = (eleg[eleg["pct"].eq(ref)].sort_values("dpto_res")
-                ["departamento"].iloc[-1])      # replicates bysort quinq (es_ref)
+                ["departamento"].iloc[-1])      # replica el bysort quinq (es_ref)
         rt_el = pmax / ref
         dt_el = pmax - ref
     return {"periodo": periodo, "tipo": tipo, "mu": mu, "ref": ref,

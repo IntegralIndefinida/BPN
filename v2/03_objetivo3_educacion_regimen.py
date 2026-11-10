@@ -121,21 +121,21 @@ def _filas(modelo: str, b: dict, se: dict, etqs: dict, var: str, niveles,
 
 
 def razones_prevalencia(celdas: pd.DataFrame) -> pd.DataFrame:
-    filmes = []
+    filas = []
 
     # M0. Educación, sin ajuste (2005-2024)
     d = celdas[celdas["educ4"] != 9]
     X0 = _dummies(d, "educ4", 4)
     b, se, N, G = _ajustar(d, "casos", X0, "n")
-    filmes += _filas("M0 Educación (cruda)", b, se, cb.EDUC4_ETQ, "educ4", [1, 2, 3], N, G)
+    filas += _filas("M0 Educación (cruda)", b, se, cb.EDUC4_ETQ, "educ4", [1, 2, 3], N, G)
 
     # M1. Educación ajustada por edad y año (2005-2024)
     X1 = pd.concat([_dummies(d, "educ4", 4), _dummies(d, "edad6", 2),
                     _dummies(d, "anio", 2005)], axis=1)
     b, se, N, G = _ajustar(d, "casos", X1, "n")
-    filmes += _filas("M1 Educación + edad + año", b, se, cb.EDUC4_ETQ, "educ4",
+    filas += _filas("M1 Educación + edad + año", b, se, cb.EDUC4_ETQ, "educ4",
                      [1, 2, 3], N, G)
-    filmes += _filas("M1 Educación + edad + año", b, se, cb.EDAD6_ETQ, "edad6",
+    filas += _filas("M1 Educación + edad + año", b, se, cb.EDAD6_ETQ, "edad6",
                      [1, 3, 4, 5, 6], N, G)
 
     # M2. Régimen ajustado por edad y año (2008-2024)
@@ -144,7 +144,7 @@ def razones_prevalencia(celdas: pd.DataFrame) -> pd.DataFrame:
     X2 = pd.concat([_dummies(dr, "regimen", 1), _dummies(dr, "edad6", 2),
                     _dummies(dr, "anio", 2008)], axis=1)
     b, se, N, G = _ajustar(dr, "casos", X2, "n")
-    filmes += _filas("M2 Régimen + edad + año", b, se, cb.REGIMEN_ETQ, "regimen",
+    filas += _filas("M2 Régimen + edad + año", b, se, cb.REGIMEN_ETQ, "regimen",
                      [2, 3], N, G)
 
     # M3. Educación y régimen juntos, ajustados por edad y año [principal]
@@ -152,11 +152,11 @@ def razones_prevalencia(celdas: pd.DataFrame) -> pd.DataFrame:
     X3 = pd.concat([_dummies(dm, "educ4", 4), _dummies(dm, "regimen", 1),
                     _dummies(dm, "edad6", 2), _dummies(dm, "anio", 2008)], axis=1)
     b, se, N, G = _ajustar(dm, "casos", X3, "n")
-    filmes += _filas("M3 Educación + régimen + edad + año", b, se, cb.EDUC4_ETQ,
+    filas += _filas("M3 Educación + régimen + edad + año", b, se, cb.EDUC4_ETQ,
                      "educ4", [1, 2, 3], N, G)
-    filmes += _filas("M3 Educación + régimen + edad + año", b, se, cb.REGIMEN_ETQ,
+    filas += _filas("M3 Educación + régimen + edad + año", b, se, cb.REGIMEN_ETQ,
                      "regimen", [2, 3], N, G)
-    filmes += _filas("M3 Educación + régimen + edad + año", b, se, cb.EDAD6_ETQ,
+    filas += _filas("M3 Educación + régimen + edad + año", b, se, cb.EDAD6_ETQ,
                      "edad6", [1, 3, 4, 5, 6], N, G)
 
     # M4. M3 + altitud del municipio + efectos fijos de departamento
@@ -165,9 +165,9 @@ def razones_prevalencia(celdas: pd.DataFrame) -> pd.DataFrame:
                     _dummies(da, "edad6", 2), _dummies(da, "anio", 2008),
                     _dummies(da, "alt_cat", 1), _dummies(da, "dpto_res", 5)], axis=1)
     b, se, N, G = _ajustar(da, "casos", X4, "n")
-    filmes += _filas("M4 M3 + altitud + EF departamento", b, se, cb.EDUC4_ETQ,
+    filas += _filas("M4 M3 + altitud + EF departamento", b, se, cb.EDUC4_ETQ,
                      "educ4", [1, 2, 3], N, G)
-    filmes += _filas("M4 M3 + altitud + EF departamento", b, se, cb.REGIMEN_ETQ,
+    filas += _filas("M4 M3 + altitud + EF departamento", b, se, cb.REGIMEN_ETQ,
                      "regimen", [2, 3], N, G)
 
     # M5. M3 con BPN a término en partos únicos (proxy de restricción del crecimiento)
@@ -175,12 +175,12 @@ def razones_prevalencia(celdas: pd.DataFrame) -> pd.DataFrame:
     X5 = pd.concat([_dummies(dt, "educ4", 4), _dummies(dt, "regimen", 1),
                     _dummies(dt, "edad6", 2), _dummies(dt, "anio", 2008)], axis=1)
     b, se, N, G = _ajustar(dt, "casos_term", X5, "n_term")
-    filmes += _filas("M5 M3 con BPN a término (únicos >=38 sem.)", b, se,
+    filas += _filas("M5 M3 con BPN a término (únicos >=38 sem.)", b, se,
                      cb.EDUC4_ETQ, "educ4", [1, 2, 3], N, G)
-    filmes += _filas("M5 M3 con BPN a término (únicos >=38 sem.)", b, se,
+    filas += _filas("M5 M3 con BPN a término (únicos >=38 sem.)", b, se,
                      cb.REGIMEN_ETQ, "regimen", [2, 3], N, G)
 
-    return pd.DataFrame(filmes)
+    return pd.DataFrame(filas)
 
 
 # --------------------------------------------------------------------------- #
@@ -196,7 +196,7 @@ def ridit_educacion(celdas: pd.DataFrame) -> pd.DataFrame:
 
 
 def rii_sii(celdas: pd.DataFrame, a0: int, a1: int) -> pd.DataFrame:
-    """RII: Poisson de casos frente ao ridit (exposición n, cluster dpto).
+    """RII: Poisson de casos frente al ridit (exposición n, cluster dpto).
     SII: regresión lineal ponderada por n de p_celda, en puntos porcentuales."""
     d = celdas[celdas["anio"].between(a0, a1)]
     X = sm.add_constant(pd.concat([d["ridit"].rename("ridit"),
@@ -260,7 +260,7 @@ def main() -> None:
     pesos = poblacion_estandar(celdas)
     print(f"celdas obj3: {len(celdas):,}")
 
-    print("\n--- A. Prevalecentes cruda y estandarizada por edad ---")
+    print("\n--- A. Prevalencia cruda y estandarizada por edad ---")
     prev = prevalencias(celdas, pesos)
     print(prev[["grupo", "categoria", "periodo", "pct_cruda", "pct_estand",
                 "li_estand", "ls_estand"]].round(2).to_string(index=False))
@@ -276,9 +276,9 @@ def main() -> None:
     print("\n--- C. RII y SII por educación ---")
     d = celdas.merge(ridit_educacion(celdas), on=["anio", "educ4"])
     d["p_celda"] = d["casos"] / d["n"]
-    iniciales = pd.concat([rii_sii(d, 2005, 2024), rii_sii(d, 2008, 2024)],
+    rii_sii_df = pd.concat([rii_sii(d, 2005, 2024), rii_sii(d, 2008, 2024)],
                           ignore_index=True)
-    print(iniciales.round(3).to_string(index=False))
+    print(rii_sii_df.round(3).to_string(index=False))
 
     grafico_estand(est_educ, "educ4", 2005,
                    "BPN según nivel educativo de la madre, 2005-2024",
@@ -294,7 +294,7 @@ def main() -> None:
                    "Fuente: DANE, EEVV. Cálculos propios.", trazo3="--")
 
     cb.exportar_excel_nuevo({"Prevalencias": prev, "RP_modelos": lista,
-                             "RII_SII_educacion": iniciales}, EXCEL)
+                             "RII_SII_educacion": rii_sii_df}, EXCEL)
     print(f"\nListo. Resultados en {cb.SALIDAS / EXCEL}")
 
 

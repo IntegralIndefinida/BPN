@@ -341,7 +341,7 @@ def curva(trienios: pd.DataFrame, muestra: int, periodo: int) -> pd.DataFrame:
     })
 
 
-def curvas_hasta(trienios: pd.DataFrame) -> pd.DataFrame:
+def curvas_datos(trienios: pd.DataFrame) -> pd.DataFrame:
     partes = [curva(trienios, m, p) for m in (1, 2, 3) for p in (1, 2)]
     d = pd.concat(partes, ignore_index=True)
     extras = pd.DataFrame([{"muestra": m, "periodo": p, "dpto_res": np.nan,
@@ -578,7 +578,7 @@ def main() -> None:
     orden = orden_dptos(trienios)
 
     print("\n--- D. Curvas de concentración ---")
-    curvas = curvas_hasta(trienios)
+    curvas = curvas_datos(trienios)
     grafico_curvas(curvas, por_trienio)
 
     valid = validacion_proxy(panel)
