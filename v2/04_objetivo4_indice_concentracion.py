@@ -170,26 +170,23 @@ def ic_vec(h: np.ndarray, w: np.ndarray, rango: np.ndarray | None = None) -> np.
     return covn / den
 
 
-def _muestreador(rng, n: int, reps: int):
-    """Índices de resampleo con reemplazo (bootstrap no agrupado)."""
-    return rng.integers(0, n, size=(reps, n))
-
-
-def bootstrap_ic(h: np.ndarray, w: np.ndarray, rango: np.ndarray, seed: int,
-                 reps: int = REPS) -> dict:
-    """Amordep bootstrap por departamento: refresquea dptos con reemplazo y
-    recalcula C, W y E en cada réplica."""
+def bootstrap_ic(h: np.ndarray, w: np.ndarray, rango: np.ndarray, C: float,
+                 seed: int, reps: int = REPS) -> dict:
+    """Bootstrap por departamento: remuestrea dptos con reemplazo y recalcula
+    C, W y E en cada réplica. IC normal centrado en el C observado `C`
+    (como el bootstrap de Stata)."""
     n = len(h)
     o = np.argsort(rango, kind="stable")
     h_o, w_o = h[o], w[o]
     rng = np.random.default_rng(seed)
-    idx = _muestreador(rng, n, reps)
+    idx = rng.integers(0, n, size=(reps, n))
+    idx.sort(axis=1)              # h_o está ordenado por rango: así cada réplica también
     w_b = w_o[idx]
     h_b = h_o[idx]
-    C_b = ic_vec(h_b, w_b)                       # ya ordenadas por rango
+    C_b = ic_vec(h_b, w_b)
     mu_b = (w_b * h_b).sum(1) / w_b.sum(1)
-    return {"se_C": C_b.std(ddof=1), "li_C": C_b.mean() - 1.96 * C_b.std(ddof=1),
-            "ls_C": C_b.mean() + 1.96 * C_b.std(ddof=1),
+    se = C_b.std(ddof=1)
+    return {"se_C": se, "li_C": C - 1.96 * se, "ls_C": C + 1.96 * se,
             "li_p": np.percentile(C_b, 2.5), "ls_p": np.percentile(C_b, 97.5),
             "se_W": (C_b / (1 - mu_b / 100)).std(ddof=1),
             "se_E": (4 * (mu_b / 100) * C_b).std(ddof=1), "C_b": C_b}
@@ -225,7 +222,7 @@ def C_anual_bootstrap(panel: pd.DataFrame) -> pd.DataFrame:
             w = dato[col_w].to_numpy(float)
             rg = dato[col_r].to_numpy(float)
             punto = ic_conc(dato[col_h], dato[col_w], dato[col_r])
-            bs = bootstrap_ic(h, w, rg, SEMILLA + anio + 100 * v)
+            bs = bootstrap_ic(h, w, rg, punto["C"], SEMILLA + anio + 100 * v)
             filas.append({"anio": anio, "variante": nombre, "C": punto["C"],
                           "se_bs": bs["se_C"], "li": bs["li_C"], "ls": bs["ls_C"],
                           "li_p": bs["li_p"], "ls_p": bs["ls_p"],
@@ -273,7 +270,8 @@ def C_trienios(trienios: pd.DataFrame) -> pd.DataFrame:
                 sub = sub.query(cond)
             punto = ic_conc(sub[col_h], sub[col_w], sub[col_r])
             bs = bootstrap_ic(sub[col_h].to_numpy(float), sub[col_w].to_numpy(float),
-                              sub[col_r].to_numpy(float), SEMILLA + 1000 * v + p)
+                              sub[col_r].to_numpy(float), punto["C"],
+                              SEMILLA + 1000 * v + p)
             filas.append({"variante": nombre, "trienio": etq, "C": punto["C"],
                           "se_reg": punto["se_reg"], "se_bs": bs["se_C"],
                           "li": bs["li_C"], "ls": bs["ls_C"],
