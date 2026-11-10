@@ -7,7 +7,8 @@
 #  Aquí va la Objetivo 1: Objetivo 1 - evolución y distribución del
 #  BPN: prevalencia nacional (cruda y estandarizada por edad), APC (Poisson
 #  robusto), prevalencia por departamento, calidad del registro del peso,
-#  por sexo y distribución del peso, con IC 95 % de Wilson. Salidas:
+#  por sexo y distribución del peso, con IC 95 % de Wilson, y descomposición
+#  de la tendencia por semanas de gestación (Kitagawa). Salidas:
 #  Objetivo1_Evolucion_BPN.xlsx, G1_bpn_nacional.png y el log.
 # =============================================================================
 import numpy as np
@@ -167,6 +168,64 @@ def distribucion_peso() -> pd.DataFrame:
 
 
 # --------------------------------------------------------------------------- #
+# C8. Semanas de gestación: qué explica la tendencia del BPN
+# --------------------------------------------------------------------------- #
+# Etiquetas de gestacion_grupo de dane-data -> grupos de análisis; el resto
+# (ignorado, sin información) va a "Sin dato". El DANE publica 28-37 semanas
+# juntas: no se puede separar la prematuridad (<37) de la semana 37.
+_MAP_GEST = {"Menos de 22": "Menos de 28 sem.", "De 22 a 27": "Menos de 28 sem.",
+             "De 28 a 37": "28 a 37 sem.", "De 38 a 41": "38 sem. y más",
+             "De 42 y más": "38 sem. y más"}
+_ORDEN_GEST = ["Menos de 28 sem.", "28 a 37 sem.", "38 sem. y más", "Sin dato"]
+
+
+def por_gestacion() -> pd.DataFrame:
+    """Por año y grupo de semanas de gestación, entre los nacidos con peso:
+    participación del grupo, % BPN dentro del grupo y aporte al % BPN nacional
+    (los aportes de un año suman su prevalencia)."""
+    d = cb.conteos(["gestacion_grupo", "bajo_peso"],
+                   list(range(cb.ANIO_INI, cb.ANIO_FIN + 1)), dropna=False)
+    d = d[d["bajo_peso"].notna()]
+    d = d.assign(
+        gestacion=pd.Categorical(d["gestacion_grupo"].astype(object).map(_MAP_GEST)
+                                 .fillna("Sin dato"), _ORDEN_GEST),
+        bpn_n=d["n"].where(d["bajo_peso"].astype(bool), 0))
+    g = (d.groupby(["anio", "gestacion"], as_index=False, observed=True)
+         [["n", "bpn_n"]].sum().rename(columns={"n": "con_peso"}))
+    total = g.groupby("anio")["con_peso"].transform("sum")
+    g["pct_nacidos"] = 100 * g["con_peso"] / total
+    g["pct_bpn"] = 100 * g["bpn_n"] / g["con_peso"]
+    g["aporte_pp"] = 100 * g["bpn_n"] / total
+    return g
+
+
+def descomposicion_gestacion(g: pd.DataFrame, a0: int = cb.ANIO_INI,
+                             a1: int = cb.ANIO_FIN) -> pd.DataFrame:
+    """Descomposición de Kitagawa del cambio del % BPN entre a0 y a1: cuánto se
+    debe a que cambió la composición por semanas de gestación y cuánto a que
+    cambió el BPN dentro de cada grupo (en puntos porcentuales)."""
+    t = g.pivot(index="gestacion", columns="anio", values=["pct_nacidos", "pct_bpn"])
+    s0, s1 = t["pct_nacidos"][a0] / 100, t["pct_nacidos"][a1] / 100
+    p0, p1 = t["pct_bpn"][a0], t["pct_bpn"][a1]
+    d = pd.DataFrame({
+        "pct_nacidos_ini": 100 * s0, "pct_nacidos_fin": 100 * s1,
+        "pct_bpn_ini": p0, "pct_bpn_fin": p1,
+        "efecto_composicion_pp": (s1 - s0) * (p0 + p1) / 2,
+        "efecto_tasas_pp": (p1 - p0) * (s0 + s1) / 2}).reset_index()
+    d["gestacion"] = d["gestacion"].astype(str)
+    total = d.drop(columns="gestacion").sum()
+    total["pct_bpn_ini"], total["pct_bpn_fin"] = (s0 * p0).sum(), (s1 * p1).sum()
+    d = pd.concat([d, pd.DataFrame([{"gestacion": "Total", **total}])],
+                  ignore_index=True)
+    d["cambio_pp"] = d["efecto_composicion_pp"] + d["efecto_tasas_pp"]
+    fin = d.iloc[-1]
+    assert np.isclose(fin["cambio_pp"], fin["pct_bpn_fin"] - fin["pct_bpn_ini"]), \
+        "la descomposición no suma el cambio observado"
+    d.insert(0, "periodo", f"{a0} a {a1}")
+    return d
+
+
+# --------------------------------------------------------------------------- #
 # G1. Cruda con IC 95 % y estandarizada por edad
 # --------------------------------------------------------------------------- #
 def grafico_g1(nac: pd.DataFrame, estand: pd.DataFrame):
@@ -272,6 +331,7 @@ LOG = "log_01_base_objetivo1"
 def calcular(celdas: pd.DataFrame) -> dict:
     """Tablas del objetivo 1; cada clave es una hoja del xlsx."""
     largo = departamento_largo(celdas)
+    gest = por_gestacion()
     return {
         "Nacional": nacional_anio(celdas),
         "Nacional_estandarizada": nacional_estandarizada(celdas),
@@ -281,6 +341,8 @@ def calcular(celdas: pd.DataFrame) -> dict:
         "Calidad_registro_peso": calidad_peso(celdas),
         "Sexo": por_sexo(),
         "Distribucion_peso": distribucion_peso(),
+        "Gestacion": gest,
+        "Descomposicion_gestacion": descomposicion_gestacion(gest),
         "Control_carga": pd.read_csv(cb.PROCESADOS / "control_carga.csv"),
     }
 
@@ -306,6 +368,8 @@ def imprimir(r: dict) -> None:
           .round(2).to_string(index=False))
     print("\n--- C7. Distribución del peso ---")
     print(r["Distribucion_peso"].round(2).to_string(index=False))
+    print("\n--- C8. Descomposición del cambio del BPN por semanas de gestación ---")
+    print(r["Descomposicion_gestacion"].round(2).to_string(index=False))
 
 
 def graficos(r: dict) -> dict:
