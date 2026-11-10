@@ -54,18 +54,26 @@ V_SIN_BOGOTA = 3
 # --------------------------------------------------------------------------- #
 # A. Panel departamento-año (2008-2024) con estandarización indirecta
 # --------------------------------------------------------------------------- #
-def panel_obj4(celdas: pd.DataFrame) -> pd.DataFrame:
-    d = celdas[celdas["dpto_res"].gt(0) & celdas["anio"].between(ANIO_INI, ANIO_FIN)]
-    d = d.rename(columns={"n": "nacidos"})
-    # Estandarización indirecta: tasa observada por (anio, alt_cat, edad6),
-    # replicando el bysort anio alt_cat edad6: egen p_celda = mean(bpn).
-    # Celdas sin edad (o sin alt_cat) quedan fuera: n_s, casos_s y esperado_s = 0.
+def estandarizar_indirecta(d: pd.DataFrame) -> pd.DataFrame:
+    """Estandarización indirecta por altitud y edad materna, celda a celda.
+
+    Agrega n_s y casos_s (nacidos con peso y casos de BPN que entran al
+    cálculo) y esperado_s: los casos esperados si la celda tuviera la tasa
+    observada en su grupo (anio, alt_cat, edad6). Celdas sin edad (o sin
+    alt_cat) quedan fuera: n_s, casos_s y esperado_s = 0.
+    La tasa estandarizada (pct_is) se obtiene después, en calc_ind."""
     g = d.groupby(["anio", "alt_cat", "edad6"])
     p_celda = g["bpn_n"].transform("sum") / g["con_peso"].transform("sum")
     con_edad = d["edad6"].notna()
-    d = d.assign(n_s=d["con_peso"].where(con_edad, 0.0),
-                 casos_s=d["bpn_n"].where(con_edad, 0.0),
-                 esperado_s=(p_celda * d["con_peso"]).fillna(0.0))
+    return d.assign(n_s=d["con_peso"].where(con_edad, 0.0),
+                    casos_s=d["bpn_n"].where(con_edad, 0.0),
+                    esperado_s=(p_celda * d["con_peso"]).fillna(0.0))
+
+
+def panel_obj4(celdas: pd.DataFrame) -> pd.DataFrame:
+    d = celdas[celdas["dpto_res"].gt(0) & celdas["anio"].between(ANIO_INI, ANIO_FIN)]
+    d = d.rename(columns={"n": "nacidos"})
+    d = estandarizar_indirecta(d)
     # Altitud media del dpto-año (ponderada por nacimientos) y nacidos a >=2.000 m
     d = d.assign(n_alt=d["nacidos"] * d["altitud_m"].fillna(0.0).to_numpy(),
                  n_alto=d["nacidos"].where(d["alt_cat"].astype(float) >= 5, 0.0))
