@@ -9,7 +9,7 @@
 #  por nacidos. Ordenamiento principal: % de madres NO afiliadas al régimen
 #  contributivo (10 variantes). Regresión conveniente de Kakwani et al.
 #  (1997). Inferencia: bootstrap por departamento (1.000 réplicas; pareado
-#  para la diferencia entre trienios). Estandarización indirecta por altitud
+#  para la diferencia entre trienios) con IC 95 % percentil. Estandarización indirecta por altitud
 #  del municipio y edad materna, con un modelo de Poisson con efectos fijos
 #  de departamento (en esto NO replica el do-file; ver estandarizar_indirecta).
 #
@@ -23,7 +23,6 @@
 import numpy as np
 import pandas as pd
 import statsmodels.api as sm
-from scipy.stats import norm
 
 import comun_bpn as cb
 
@@ -226,11 +225,22 @@ def ic_vec(h: np.ndarray, w: np.ndarray, rango: np.ndarray | None = None) -> np.
     return covn / den
 
 
-def bootstrap_ic(h: np.ndarray, w: np.ndarray, rango: np.ndarray, C: float,
+def ic_percentil(b: np.ndarray) -> dict:
+    """IC 95 % percentil de las réplicas bootstrap y su valor p bilateral
+    (el doble de la menor proporción de réplicas a un lado de cero).
+
+    No se usa el IC normal (estimación ± 1,96·EE, el del bootstrap de Stata)
+    porque las réplicas no siguen una normal: son bimodales, según salga o
+    no Bogotá en la muestra."""
+    lado = min((b <= 0).sum(), (b >= 0).sum())
+    return {"li": np.percentile(b, 2.5), "ls": np.percentile(b, 97.5),
+            "p": min(1.0, 2 * (lado + 1) / (len(b) + 1))}
+
+
+def bootstrap_ic(h: np.ndarray, w: np.ndarray, rango: np.ndarray,
                  seed: int, reps: int = REPS) -> dict:
     """Bootstrap por departamento: remuestrea dptos con reemplazo y recalcula
-    C, W y E en cada réplica. IC normal centrado en el C observado `C`
-    (como el bootstrap de Stata)."""
+    C, W y E en cada réplica. Devuelve los EE y el IC percentil y p de C."""
     n = len(h)
     o = np.argsort(rango, kind="stable")
     h_o, w_o = h[o], w[o]
@@ -241,9 +251,7 @@ def bootstrap_ic(h: np.ndarray, w: np.ndarray, rango: np.ndarray, C: float,
     h_b = h_o[idx]
     C_b = ic_vec(h_b, w_b)
     mu_b = (w_b * h_b).sum(1) / w_b.sum(1)
-    se = C_b.std(ddof=1)
-    return {"se_C": se, "li_C": C - 1.96 * se, "ls_C": C + 1.96 * se,
-            "li_p": np.percentile(C_b, 2.5), "ls_p": np.percentile(C_b, 97.5),
+    return {"se_C": C_b.std(ddof=1), **ic_percentil(C_b),
             "se_W": (C_b / (1 - mu_b / 100)).std(ddof=1),
             "se_E": (4 * (mu_b / 100) * C_b).std(ddof=1), "C_b": C_b}
 
@@ -278,15 +286,12 @@ def C_anual_bootstrap(panel: pd.DataFrame) -> pd.DataFrame:
             w = dato[col_w].to_numpy(float)
             rg = dato[col_r].to_numpy(float)
             punto = ic_conc(dato[col_h], dato[col_w], dato[col_r])
-            bs = bootstrap_ic(h, w, rg, punto["C"], SEMILLA + anio + 100 * v)
+            bs = bootstrap_ic(h, w, rg, SEMILLA + anio + 100 * v)
             filas.append({"anio": anio, "variante": nombre, "C": punto["C"],
-                          "se_bs": bs["se_C"], "li": bs["li_C"], "ls": bs["ls_C"],
-                          "li_p": bs["li_p"], "ls_p": bs["ls_p"],
-                          "W": punto["W"], "se_W": bs["se_W"],
+                          "se_bs": bs["se_C"], "li": bs["li"], "ls": bs["ls"],
+                          "p": bs["p"], "W": punto["W"], "se_W": bs["se_W"],
                           "E": punto["E"], "se_E": bs["se_E"]})
-    d = pd.DataFrame(filas)
-    d["p"] = 2 * norm.sf(np.abs(d["C"] / d["se_bs"]))
-    return d
+    return pd.DataFrame(filas)
 
 
 # --------------------------------------------------------------------------- #
@@ -319,16 +324,14 @@ def C_trienios(trienios: pd.DataFrame) -> pd.DataFrame:
                 sub = sub.query(cond)
             punto = ic_conc(sub[col_h], sub[col_w], sub[col_r])
             bs = bootstrap_ic(sub[col_h].to_numpy(float), sub[col_w].to_numpy(float),
-                              sub[col_r].to_numpy(float), punto["C"],
-                              SEMILLA + 1000 * v + p)
+                              sub[col_r].to_numpy(float), SEMILLA + 1000 * v + p)
             filas.append({"variante": nombre, "trienio": etq, "C": punto["C"],
                           "se_reg": punto["se_reg"], "se_bs": bs["se_C"],
-                          "li": bs["li_C"], "ls": bs["ls_C"],
+                          "li": bs["li"], "ls": bs["ls"], "p": bs["p"],
                           "W": punto["W"], "se_W": bs["se_W"],
                           "E": punto["E"], "se_E": bs["se_E"],
                           "mu": punto["mu"], "N": punto["N"]})
     d = pd.DataFrame(filas)
-    d["p"] = 2 * norm.sf(np.abs(d["C"] / d["se_bs"]))
     return d[["variante", "trienio", "N", "mu", "C", "se_reg", "se_bs", "li",
               "ls", "p", "W", "se_W", "E", "se_E"]]
 
@@ -361,11 +364,8 @@ def diferencia_trienios(trienios: pd.DataFrame) -> pd.DataFrame:
         C1_b = ic_vec(h1[idx], w1[idx], r1[idx])
         C2_b = ic_vec(h2[idx], w2[idx], r2[idx])
         dif_b = C2_b - C1_b
-        d_obs = c2 - c1
-        se = dif_b.std(ddof=1)
-        filas.append({"variante": nombre, "C1": c1, "C2": c2, "dif": d_obs,
-                      "se_bs": se, "li": d_obs - 1.96 * se,
-                      "ls": d_obs + 1.96 * se, "p": 2 * norm.sf(abs(d_obs / se))})
+        filas.append({"variante": nombre, "C1": c1, "C2": c2, "dif": c2 - c1,
+                      "se_bs": dif_b.std(ddof=1), **ic_percentil(dif_b)})
     return pd.DataFrame(filas)
 
 
@@ -572,7 +572,7 @@ def grafico_g2(boot: pd.DataFrame, anual: pd.DataFrame):
                  "régimen contributivo", fontsize=11)
     ax.legend(loc="lower left", fontsize=8.5, ncols=1)
     ax.annotate("C > 0: el BPN se concentra en los departamentos menos pobres;\n"
-                "C < 0: en los más pobres. IC 95 % bootstrap para Principal.\n"
+                "C < 0: en los más pobres. IC 95 % bootstrap (percentil) para Principal.\n"
                 "Fuente: DANE, Estadísticas Vitales. Cálculos propios.",
                 xy=(1, -0.16), xycoords="axes fraction", ha="right", fontsize=7,
                 va="top")

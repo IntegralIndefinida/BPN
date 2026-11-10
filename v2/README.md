@@ -93,6 +93,10 @@ Ningún módulo escribe archivos por su cuenta: eso lo hace `correr.py`.
   año y efectos fijos de departamento (O'Donnell et al. 2008, cap. 5) y predice
   los casos esperados solo con altitud y edad. Los coeficientes van en la hoja
   `Efecto_altitud_edad`.
+- Los intervalos de confianza y los valores p del bootstrap (objetivo 4) son
+  **percentil**, no el normal del `bootstrap` de Stata que usa el do-file: las
+  réplicas son bimodales (C ≈ 0,03 cuando Bogotá no sale en la muestra y
+  0,08–0,12 cuando sale), así que estimación ± 1,96·EE no las describe.
 - El régimen de afiliación solo es comparable desde 2008 (objetivos 3 y 4).
 - La validación del ordenamiento contra NBI/IPM (hoja `Validacion_proxy`) se
   omite con un aviso si no existe la plantilla
