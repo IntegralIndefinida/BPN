@@ -257,13 +257,15 @@ def _imputar_altitud(celdas: pd.DataFrame) -> pd.DataFrame:
 
 
 def _huella(fuente: Path) -> str:
-    """Firma del caché: archivo del DANE + versión dane-data + este módulo."""
+    """Firma del caché: archivo del DANE + versión dane-data + este módulo
+    + CSV de altitud (la altitud queda guardada en las celdas)."""
     st = fuente.stat()
     h = hashlib.sha1()
     h.update(str(fuente).encode())
     h.update(f"{st.st_size}-{st.st_mtime_ns}".encode())
     h.update(importlib.metadata.version("dane-data").encode())
     h.update(Path(__file__).read_bytes())
+    h.update(ALTITUD_CSV.read_bytes())
     return h.hexdigest()
 
 
