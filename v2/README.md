@@ -3,7 +3,7 @@
 Traducción a Python de los 4 do-files de Stata de la carpeta `Code/stata/v2`
 (análisis de bajo peso al nacer, BPN, con microdatos de nacimientos de las
 Estadísticas Vitales del DANE). Los scripts espejan la estructura de los
-do-files y producen las mismas salidas (xlsx por objetivo, gráficos G1–G11 y
+do-files y producen las mismas salidas (xlsx por objetivo, gráficos G1–G14 y
 logs), leyendo los datos con la librería `dane-data`.
 
 ## Requisitos
@@ -46,7 +46,7 @@ Ningún módulo escribe archivos por su cuenta: eso lo hace `correr.py`.
 | `correr.py` | — | corre los objetivos y guarda log, xlsx y png |
 | `sintesis.ipynb` | — | síntesis del análisis: recalcula y muestra tablas y gráficos |
 | `comun_bpn.py` | Parte A/B de `01_Base_y_Objetivo1.do` | rutas, etiquetas, carga con `dd.eevv`, celdas de conteos, imputación de altitud, caché, helpers (Wilson, APC Poisson, Excel, gráficos, log) |
-| `obj1_evolucion.py` | `01_Base_y_Objetivo1.do` C | prevalencia nacional (cruda y estandarizada), APC, departamentos, calidad del registro del peso, sexo, distribución del peso, G1 |
+| `obj1_evolucion.py` | `01_Base_y_Objetivo1.do` C | prevalencia nacional (cruda y estandarizada), APC, departamentos, calidad del registro del peso, sexo, distribución del peso, G1 y G12–G14 (mapa de calor por departamento, % BPN por sexo, distribución del peso) |
 | `obj2_desigualdades.py` | `02_Objetivo2_Desigualdades_RT_DT.do` | RP/DP por quinquenio y año frente a la referencia elegible, Theil/MLD, PAR/PAF, extremos, G7/G8 |
 | `obj3_educacion.py` | `03_Objetivo3_Educacion_Regimen.do` | prevalencias por educación y régimen, Poisson M0–M5 con errores cluster dpto, RII/SII, G9/G10 |
 | `obj4_concentracion.py` | `04_Objetivo4_Indice_Concentracion.do` | estandarización indirecta por altitud y edad, índices C/W/E por regresión conveniente (Kakwani), 10 variantes, bootstrap por departamento, trienios 2008-2010 vs 2022-2024 con bootstrap pareado, curvas G3–G6/G11, G2 |
@@ -76,7 +76,7 @@ Ningún módulo escribe archivos por su cuenta: eso lo hace `correr.py`.
 - `Objetivo1_Evolucion_BPN.xlsx`, `Objetivo2_Desigualdades_RT_DT.xlsx`,
   `Objetivo3_Educacion_Regimen_BPN.xlsx`,
   `Objetivo4_Indice_Concentracion_BPN.xlsx`
-- `G1`…`G11` (PNG, 300 dpi) y `log_01…log_04` (log de cada corrida,
+- `G1`…`G14` (PNG, 300 dpi) y `log_01…log_04` (log de cada corrida,
   mismo contenido que la consola).
 
 ## Notas de replicación

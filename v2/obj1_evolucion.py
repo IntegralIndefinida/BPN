@@ -193,6 +193,76 @@ def grafico_g1(nac: pd.DataFrame, estand: pd.DataFrame):
     return fig
 
 
+FUENTE = "Fuente: DANE, Estadísticas Vitales. Cálculos propios."
+
+
+# --------------------------------------------------------------------------- #
+# G12. Mapa de calor: % BPN por departamento y año
+# --------------------------------------------------------------------------- #
+def grafico_mapa_calor(ancho: pd.DataFrame):
+    import matplotlib.pyplot as plt
+    anios = [c for c in ancho.columns if c.isdigit()]
+    d = (ancho.assign(_orden=ancho[[a for a in anios if int(a) >= 2020]].mean(axis=1))
+         .sort_values("_orden", ascending=False))
+    fig, ax = plt.subplots(figsize=(10, 8))
+    im = ax.imshow(d[anios].to_numpy(float), aspect="auto", cmap="YlOrRd")
+    ax.set_xticks(range(len(anios)), anios, rotation=90, fontsize=8)
+    ax.set_yticks(range(len(d)), d["departamento"], fontsize=8)
+    ax.grid(False)
+    fig.colorbar(im, ax=ax, label="% de nacidos vivos con peso < 2.500 g")
+    ax.set_title("Bajo peso al nacer por departamento de residencia, 2005-2024",
+                 fontsize=12)
+    ax.annotate("Departamentos ordenados por el promedio del % BPN 2020-2024.\n"
+                + FUENTE, xy=(0, -0.1), xycoords="axes fraction", fontsize=7,
+                va="top")
+    fig.tight_layout()
+    return fig
+
+
+# --------------------------------------------------------------------------- #
+# G13. % BPN por sexo del nacido vivo
+# --------------------------------------------------------------------------- #
+def grafico_sexo(sexo: pd.DataFrame):
+    import matplotlib.pyplot as plt
+    fig, ax = plt.subplots(figsize=(8, 5))
+    ax.plot(sexo["anio"], sexo["pct_bpnMujer"], color="#A63603", marker="o", ms=4,
+            label="Mujeres")
+    ax.plot(sexo["anio"], sexo["pct_bpnHombre"], color="#08306B", marker="o", ms=4,
+            label="Hombres")
+    ax.set_xticks(range(2005, 2025, 2))
+    ax.set_ylabel("% de nacidos vivos con peso < 2.500 g")
+    ax.set_title("Bajo peso al nacer según sexo del nacido vivo, 2005-2024",
+                 fontsize=12)
+    ax.legend(loc="upper left", fontsize=9)
+    ax.annotate("Se excluye el sexo indeterminado.\n" + FUENTE, xy=(1, -0.14),
+                xycoords="axes fraction", ha="right", fontsize=7, va="top")
+    fig.tight_layout()
+    return fig
+
+
+# --------------------------------------------------------------------------- #
+# G14. Distribución del peso al nacer por año (áreas apiladas)
+# --------------------------------------------------------------------------- #
+def grafico_distribucion(dist: pd.DataFrame):
+    import matplotlib.pyplot as plt
+    grupos = [g for g in cb.PESO_GRUPO_ETQ.values() if g in dist.columns]
+    fig, ax = plt.subplots(figsize=(10, 5))
+    ax.stackplot(dist["anio"], *[dist[g] for g in grupos], labels=grupos,
+                 colors=plt.get_cmap("RdYlBu")(np.linspace(0.05, 0.95, len(grupos))),
+                 lw=0)
+    ax.set(xlim=(dist["anio"].min(), dist["anio"].max()), ylim=(0, 100),
+           ylabel="% de nacidos vivos con peso conocido")
+    ax.set_xticks(range(2005, 2025, 2))
+    ax.set_title("Distribución del peso al nacer por año, 2005-2024", fontsize=12)
+    handles, labels = ax.get_legend_handles_labels()
+    ax.legend(handles[::-1], labels[::-1], title="Peso al nacer (g)",
+              bbox_to_anchor=(1.02, 1), loc="upper left", fontsize=8.5)
+    ax.annotate(FUENTE, xy=(1, -0.1), xycoords="axes fraction", ha="right",
+                fontsize=7, va="top")
+    fig.tight_layout()
+    return fig
+
+
 # --------------------------------------------------------------------------- #
 # Interfaz del módulo: calcular -> imprimir / graficos (ver correr.py)
 # --------------------------------------------------------------------------- #
@@ -240,4 +310,7 @@ def imprimir(r: dict) -> None:
 
 def graficos(r: dict) -> dict:
     cb.iniciar_estilo()
-    return {"G1_bpn_nacional": grafico_g1(r["Nacional"], r["Nacional_estandarizada"])}
+    return {"G1_bpn_nacional": grafico_g1(r["Nacional"], r["Nacional_estandarizada"]),
+            "G12_mapa_calor_departamentos": grafico_mapa_calor(r["Departamento_%BPN"]),
+            "G13_bpn_por_sexo": grafico_sexo(r["Sexo"]),
+            "G14_distribucion_peso": grafico_distribucion(r["Distribucion_peso"])}
