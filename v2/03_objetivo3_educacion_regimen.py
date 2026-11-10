@@ -210,7 +210,7 @@ def rii_sii(celdas: pd.DataFrame, a0: int, a1: int) -> pd.DataFrame:
         ("RII", sm.GLM(d["casos"].astype(float), X, family=sm.families.Poisson(),
                        offset=np.log(d["n"].astype(float))).fit(cov_type="cluster",
                                                                 cov_kwds=grupos)),
-        ("SII (pp)", sm.OLS(d["p_celda"].astype(float), X,
+        ("SII (pp)", sm.WLS(d["p_celda"].astype(float), X,
                             weights=d["n"].astype(float)).fit(cov_type="cluster",
                                                               cov_kwds=grupos)),
     ]:
