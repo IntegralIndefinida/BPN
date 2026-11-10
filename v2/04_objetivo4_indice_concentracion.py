@@ -339,11 +339,13 @@ def orden_dptos(trienios: pd.DataFrame) -> pd.DataFrame:
 # D. Curvas de concentración (trienios; 3 muestras)
 # --------------------------------------------------------------------------- #
 def curva(trienios: pd.DataFrame, muestra: int, periodo: int) -> pd.DataFrame:
+    """muestra (numeración del do-file, no la de `variantes`):
+    1 = principal, 2 = sin Bogotá, 3 = estandarizada."""
     t = trienios[trienios["periodo"] == periodo].sort_values("ses_nc")
-    if muestra == V_SIN_BOGOTA:
+    if muestra == 2:
         t = t[t["dpto_res"] != 11]
-    w = t["con_peso"] if muestra != V_ESTAND else t["n_s"]
-    b = t["bpn_n"] if muestra != V_ESTAND else t["pct_is"] / 100 * t["n_s"]
+    w = t["con_peso"] if muestra != 3 else t["n_s"]
+    b = t["bpn_n"] if muestra != 3 else t["pct_is"] / 100 * t["n_s"]
     Wt, Bt = w.sum(), b.sum()
     return pd.DataFrame({
         "muestra": muestra, "periodo": periodo, "dpto_res": t["dpto_res"].to_numpy(),
