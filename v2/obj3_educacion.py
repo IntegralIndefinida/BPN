@@ -11,7 +11,9 @@
 #      M4 (edad, año, altitud y efectos fijos de departamento); M5 repite ese
 #      ajuste con el BPN a término en partos únicos (resultado secundario).
 #   C. Índice relativo (RII) y de la pendiente (SII) por educación con ridit,
-#      con el ajuste de M4, para los dos resultados y por quinquenio.
+#      con el ajuste de M4, para los dos resultados y por quinquenio; con
+#      cotas extremas para la educación faltante (todas al nivel más bajo o
+#      al más alto) y el % faltante por departamento.
 #  No se ajusta por gestación, controles prenatales ni tipo de parto
 #  (mediadores, ver nota técnica del análisis).
 #  Salidas: Objetivo3_Educacion_Regimen_BPN.xlsx, G9, G10 y log.
@@ -240,6 +242,42 @@ def rii_sii(celdas: pd.DataFrame, a0: int, a1: int, resultado: str) -> pd.DataFr
     return pd.DataFrame(filas)
 
 
+# La educación falta más en los departamentos más pobres (no al azar). Cotas
+# extremas: se asigna a todas las madres sin dato el nivel más bajo o el más alto.
+FALTANTES = {"Excluidos (principal)": None, "Como nivel más bajo": 1,
+             "Como nivel más alto": 4}
+
+
+def rii_sii_cotas(c: pd.DataFrame) -> pd.DataFrame:
+    """RII y SII por resultado y periodo, con las tres formas de tratar la
+    educación faltante de FALTANTES (el ridit se recalcula en cada una)."""
+    partes = []
+    for etq, nivel in FALTANTES.items():
+        k = c if nivel is None else c.assign(educ4=c["educ4"].replace(9, nivel))
+        d = k.merge(ridit_educacion(k), on=["anio", "educ4"])
+        t = pd.concat([rii_sii(d, a0, a1, res) for res in RESULTADOS
+                       for a0, a1 in PERIODOS], ignore_index=True)
+        t.insert(0, "faltantes", etq)
+        partes.append(t)
+    return pd.concat(partes, ignore_index=True)
+
+
+def educacion_faltante(c: pd.DataFrame) -> pd.DataFrame:
+    """% de nacidos (con peso y edad conocidos) sin dato de educación de la
+    madre, por departamento y periodo; la primera fila es el total nacional."""
+    falt = c["n"].where(c["educ4"].eq(9), 0)
+    cols, nac = {}, {}
+    for a0, a1 in PERIODOS:
+        m = c["anio"].between(a0, a1)
+        cols[f"{a0}-{a1}"] = (100 * falt[m].groupby(c["dpto_res"]).sum()
+                              / c["n"][m].groupby(c["dpto_res"]).sum())
+        nac[f"{a0}-{a1}"] = 100 * falt[m].sum() / c["n"][m].sum()
+    d = pd.DataFrame(cols).sort_values("2020-2024", ascending=False).reset_index()
+    d.insert(1, "departamento", d["dpto_res"].map(cb.DPTO_NOM))
+    return pd.concat([pd.DataFrame([{"dpto_res": 0, "departamento": "Colombia", **nac}]),
+                      d], ignore_index=True)
+
+
 # --------------------------------------------------------------------------- #
 # G9/G10. Prevalencia estandarizada por año según educ4 y según régimen
 # --------------------------------------------------------------------------- #
@@ -275,12 +313,11 @@ def calcular(celdas: pd.DataFrame) -> dict:
     """Tablas del objetivo 3; las claves con "_" son intermedias (no van al xlsx)."""
     c = celdas_obj3(celdas)
     pesos = poblacion_estandar(c)
-    d = c.merge(ridit_educacion(c), on=["anio", "educ4"])
     return {
         "Prevalencias": prevalencias(c, pesos),
         "RP_modelos": razones_prevalencia(c),
-        "RII_SII_educacion": pd.concat([rii_sii(d, a0, a1, res) for res in RESULTADOS
-                                        for a0, a1 in PERIODOS], ignore_index=True),
+        "RII_SII_educacion": rii_sii_cotas(c),
+        "Educacion_faltante": educacion_faltante(c),
         "_est_educ": estandarizada_anio(c, pesos, "educ4", 2005),
         "_est_reg": estandarizada_anio(c, pesos, "regimen", 2008),
         "_n_celdas": len(c),
@@ -296,8 +333,10 @@ def imprimir(r: dict) -> None:
     print("\n--- B. Razones de prevalencia (M0 a M5), cluster dpto ---")
     print(r["RP_modelos"][["modelo", "variable", "categoria", "rp", "li", "ls"]]
           .round(2).to_string(index=False))
-    print("\n--- C. RII y SII por educación ---")
+    print("\n--- C. RII y SII por educación (y cotas por educación faltante) ---")
     print(r["RII_SII_educacion"].round(3).to_string(index=False))
+    print("\n--- D. % sin dato de educación (Colombia y 8 dptos con más faltante) ---")
+    print(r["Educacion_faltante"].head(9).round(1).to_string(index=False))
 
 
 def graficos(r: dict) -> dict:
