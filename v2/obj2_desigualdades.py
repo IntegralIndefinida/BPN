@@ -8,12 +8,17 @@
 #  (menor prevalencia entre departamentos con pesos y cobertura de registro
 #  suficientes) y frente a la prevalencia de las 33 unidades, por quinquenio
 #  y por año. Medidas resumen: Theil, MLD, PAR/PAF y casos en exceso.
+#  Todo se calcula dos veces: con la prevalencia cruda y con la ajustada por
+#  altitud y edad materna (hojas "_aj"), porque la referencia cruda cae
+#  siempre en tierras bajas. IC 95 %: binomial (delta) para RP y DP;
+#  simulación binomial para Theil y PAF.
 #  Salidas: Objetivo2_Desigualdades_RT_DT.xlsx, G7 y G8 png, log.
 # =============================================================================
 import numpy as np
 import pandas as pd
 
 import comun_bpn as cb
+from obj4_concentracion import REPS, SEMILLA, estandarizar_indirecta
 
 EXCEL = "Objetivo2_Desigualdades_RT_DT.xlsx"
 MIN_QUINQ = 10_000     # nacidos con peso conocido en el quinquenio
@@ -35,6 +40,26 @@ def panel_dpto_anio(celdas: pd.DataFrame) -> pd.DataFrame:
     return d
 
 
+def panel_ajustado(celdas: pd.DataFrame, panel: pd.DataFrame) -> pd.DataFrame:
+    """Panel con los casos de BPN ajustados por altitud y edad materna, para
+    repetir todas las medidas sin el efecto de la altitud (la referencia cruda
+    cae siempre en tierras bajas).
+
+    Mismos nacidos y con_peso que `panel`; bpn_n = con_peso x prevalencia
+    estandarizada del año (observada - esperada + media nacional), con la
+    estandarización indirecta del objetivo 4 estimada aquí sobre 2005-2024."""
+    d = estandarizar_indirecta(celdas[celdas["dpto_res"].gt(0)])
+    s = d.groupby(["dpto_res", "anio"], as_index=False)[["n_s", "casos_s",
+                                                         "esperado_s"]].sum()
+    g = s.groupby("anio")
+    s["p_aj"] = ((s["casos_s"] - s["esperado_s"]) / s["n_s"]
+                 + g["casos_s"].transform("sum") / g["n_s"].transform("sum"))
+    p = panel.merge(s[["dpto_res", "anio", "p_aj"]], on=["dpto_res", "anio"],
+                    validate="one_to_one")
+    assert len(p) == len(panel), "dpto-años sin prevalencia ajustada"
+    return p.assign(bpn_n=p["con_peso"] * p["p_aj"]).drop(columns="p_aj")
+
+
 def _prevalencias(d: pd.DataFrame) -> pd.DataFrame:
     d = d.copy()
     d["pct"] = 100 * d["bpn_n"] / d["con_peso"]
@@ -48,6 +73,37 @@ def _con_elegible(d: pd.DataFrame, minimo: int) -> pd.DataFrame:
     d = _prevalencias(d)
     d["elegible"] = (d["con_peso"] >= minimo) & (d["pct_falt"] <= MAX_FALT)
     return d
+
+
+def _ic_rt_dt(d: pd.DataFrame, grupo: str) -> pd.DataFrame:
+    """IC 95 % de rt y dt de cada departamento frente a la referencia de su
+    `grupo` (varianza binomial, método delta). La referencia se toma como
+    dada: el intervalo no incluye la incertidumbre de haberla elegido por ser
+    la mínima."""
+    es_ref = d["elegible"].astype(bool) & d["pct"].eq(d["ref"])
+    n_ref = d["con_peso"].where(es_ref).groupby(d[grupo]).transform("max")
+    p, p0, n = d["pct"] / 100, d["ref"] / 100, d["con_peso"]
+    se_log = np.sqrt((1 - p) / (n * p) + (1 - p0) / (n_ref * p0)).where(~es_ref, 0.0)
+    se_dif = 100 * np.sqrt(p * (1 - p) / n + p0 * (1 - p0) / n_ref).where(~es_ref, 0.0)
+    return d.assign(rt_li=d["rt"] * np.exp(-1.96 * se_log),
+                    rt_ls=d["rt"] * np.exp(1.96 * se_log),
+                    dt_li=d["dt"] - 1.96 * se_dif, dt_ls=d["dt"] + 1.96 * se_dif)
+
+
+def _ic_resumen(n: np.ndarray, p: np.ndarray, elegible: np.ndarray) -> dict:
+    """IC 95 % percentil de Theil y PAF por simulación binomial (REPS réplicas):
+    en cada una se sortean los casos de cada departamento, Binomial(n, p), y
+    se recalculan la media, la referencia elegible y los dos índices."""
+    b = np.random.default_rng(SEMILLA).binomial(n.round().astype(int), p,
+                                                size=(REPS, len(n)))
+    pr, mu = b / n, b.sum(1) / n.sum()
+    r = pr / mu[:, None]
+    theil = 1000 * (n / n.sum() * np.where(r > 0, r * np.log(np.where(r > 0, r, 1)),
+                                           0.0)).sum(1)
+    paf = 100 * (mu - np.where(elegible, pr, np.inf).min(1)) / mu
+    lim = lambda x: np.percentile(x, [2.5, 97.5]) if np.isfinite(x).all() else (np.nan,) * 2
+    (t0, t1), (f0, f1) = lim(theil), lim(paf)
+    return {"theil_li": t0, "theil_ls": t1, "paf_li": f0, "paf_ls": f1}
 
 
 def _quinquenios(panel: pd.DataFrame) -> pd.DataFrame:
@@ -75,11 +131,13 @@ def rt_dt_quinquenio(d: pd.DataFrame) -> pd.DataFrame:
     d["dt"] = d["pct"] - d["ref"]
     d["rt_nac"] = d["pct"] / d["mu"]
     d["dt_nac"] = d["pct"] - d["mu"]
+    d = _ic_rt_dt(d, "quinq")
     d["elegible"] = d["elegible"].astype(int)
     d["quinq"] = d["quinq"].map(QUINQ_ETQ)
     return d[["quinq", "dpto_res", "departamento", "nacidos", "con_peso",
               "pct_falt", "elegible", "bpn_n", "pct", "li", "ls", "ref",
-              "dpto_ref", "rt", "dt", "mu", "rt_nac", "dt_nac", "es_ref"]]
+              "dpto_ref", "rt", "rt_li", "rt_ls", "dt", "dt_li", "dt_ls", "mu",
+              "rt_nac", "dt_nac", "es_ref"]]
 
 
 def rt_dt_ancho(quinq: pd.DataFrame) -> pd.DataFrame:
@@ -99,9 +157,11 @@ def rt_dt_anual(d: pd.DataFrame) -> pd.DataFrame:
     d["ref"] = d["pct"].where(d["elegible"]).groupby(d["anio"]).transform("min")
     d["rt"] = d["pct"] / d["ref"]
     d["dt"] = d["pct"] - d["ref"]
+    d = _ic_rt_dt(d, "anio")
     d["elegible"] = d["elegible"].astype(int)
     return d[["anio", "dpto_res", "departamento", "nacidos", "con_peso",
-              "pct_falt", "elegible", "bpn_n", "pct", "ref", "rt", "dt"]].sort_values(
+              "pct_falt", "elegible", "bpn_n", "pct", "ref", "rt", "rt_li", "rt_ls",
+              "dt", "dt_li", "dt_ls"]].sort_values(
         ["anio", "dpto_res"]).reset_index(drop=True)
 
 
@@ -134,8 +194,14 @@ def resumen_desig(d: pd.DataFrame, periodo: str, tipo: str) -> dict:
                 ["departamento"].iloc[-1])      # último departamento del quinquenio
         rt_el = pmax / ref
         dt_el = pmax - ref
+    ic = _ic_resumen(da["con_peso"].to_numpy(float), da["pct"].to_numpy(float) / 100,
+                     da["elegible"].to_numpy(bool))
+    paf = 100 * (mu - ref) / mu
+    assert ic["theil_li"] <= theil <= ic["theil_ls"], f"Theil fuera de su IC ({periodo})"
+    assert np.isnan(paf) or ic["paf_li"] <= paf <= ic["paf_ls"], \
+        f"PAF fuera de su IC ({periodo})"
     return {"periodo": periodo, "tipo": tipo, "mu": mu, "ref": ref,
-            "dpto_ref": nref, "par": mu - ref, "paf": 100 * (mu - ref) / mu,
+            "dpto_ref": nref, "par": mu - ref, "paf": paf, **ic,
             "exceso": (mu - ref) / 100 * W, "theil": theil, "mld": mld,
             "pmax": pmax, "dpto_max": nmax, "pmin": pmin, "dpto_min": nmin,
             "rt_ext": pmax / pmin, "dt_ext": pmax - pmin,
@@ -151,8 +217,8 @@ def medidas_resumen(panel: pd.DataFrame) -> pd.DataFrame:
         d_anio = _con_elegible(panel[panel["anio"] == anio], MIN_ANUAL)
         filas.append(resumen_desig(d_anio, str(anio), "Año"))
     return pd.DataFrame(filas)[
-        ["periodo", "tipo", "mu", "ref", "dpto_ref", "par", "paf", "exceso",
-         "theil", "mld", "pmax", "dpto_max", "pmin", "dpto_min", "rt_ext",
+        ["periodo", "tipo", "mu", "ref", "dpto_ref", "par", "paf", "paf_li",
+         "paf_ls", "exceso", "theil", "theil_li", "theil_ls", "mld", "pmax", "dpto_max", "pmin", "dpto_min", "rt_ext",
          "dt_ext", "rt_ext_el", "dt_ext_el"]]
 
 
@@ -225,14 +291,14 @@ LOG = "log_02_objetivo2"
 def calcular(celdas: pd.DataFrame) -> dict:
     """Tablas del objetivo 2; las claves con "_" son intermedias (no van al xlsx)."""
     panel = panel_dpto_anio(celdas)
-    quinq = rt_dt_quinquenio(panel)
-    return {
-        "RP_DP_quinquenio": quinq,
-        "RP_DP_ancho": rt_dt_ancho(quinq),
-        "RP_DP_anual": rt_dt_anual(panel),
-        "Medidas_resumen": medidas_resumen(panel),
-        "_panel": panel,
-    }
+    r = {}
+    # hojas sin sufijo: crudas; "_aj": ajustadas por altitud y edad materna
+    for suf, p in [("", panel), ("_aj", panel_ajustado(celdas, panel))]:
+        quinq = rt_dt_quinquenio(p)
+        r |= {f"RP_DP_quinquenio{suf}": quinq, f"RP_DP_ancho{suf}": rt_dt_ancho(quinq),
+              f"RP_DP_anual{suf}": rt_dt_anual(p),
+              f"Medidas_resumen{suf}": medidas_resumen(p)}
+    return {**r, "_panel": panel}
 
 
 def imprimir(r: dict) -> None:
@@ -251,11 +317,14 @@ def imprimir(r: dict) -> None:
     print("Referencia por quinquenio:")
     print(quinq[quinq["es_ref"].eq(1)][["quinq", "departamento", "ref"]]
           .drop_duplicates().to_string(index=False))
-    print("\n--- C. Medidas resumen ---")
-    resumen = r["Medidas_resumen"]
-    print(resumen[resumen["tipo"].eq("Quinquenio")]
-          [["periodo", "ref", "dpto_ref", "par", "paf", "theil"]]
-          .round(2).to_string(index=False))
+    for titulo, hoja in [("crudas", "Medidas_resumen"),
+                         ("ajustadas por altitud y edad", "Medidas_resumen_aj")]:
+        print(f"\n--- C. Medidas resumen ({titulo}) ---")
+        resumen = r[hoja]
+        print(resumen[resumen["tipo"].eq("Quinquenio")]
+              [["periodo", "mu", "ref", "dpto_ref", "paf", "paf_li", "paf_ls",
+                "theil", "theil_li", "theil_ls", "rt_ext_el"]]
+              .round(2).to_string(index=False))
     print("\n--- RP/DP anual ---")
     anual = r["RP_DP_anual"]
     print(anual[anual["anio"].isin([2005, 2024])][["anio", "departamento", "pct", "ref", "rt"]]
