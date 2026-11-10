@@ -1,7 +1,7 @@
 # -*- coding: utf-8 -*-
 # =============================================================================
 #  TRABAJO FINAL - BAJO PESO AL NACER EN COLOMBIA 2005-2024
-#  Python: 04_objetivo4_indice_concentracion.py
+#  Python: obj4_concentracion.py
 #  (equivale a 04_Objetivo4_Indice_Concentracion.do, v2)
 #
 #  Objetivo 4: desigualdades socioeconómicas del BPN entre departamentos con
@@ -220,8 +220,6 @@ def C_anual_bootstrap(panel: pd.DataFrame) -> pd.DataFrame:
                           "li_p": bs["li_p"], "ls_p": bs["ls_p"],
                           "W": punto["W"], "se_W": bs["se_W"],
                           "E": punto["E"], "se_E": bs["se_E"]})
-            print(f"  {anio} - {nombre}: C = {punto['C']:.4f}  "
-                  f"EE bootstrap = {bs['se_C']:.4f}")
     d = pd.DataFrame(filas)
     d["p"] = 2 * norm.sf(np.abs(d["C"] / d["se_bs"]))
     return d
@@ -304,7 +302,6 @@ def diferencia_trienios(trienios: pd.DataFrame) -> pd.DataFrame:
         filas.append({"variante": nombre, "C1": c1, "C2": c2, "dif": d_obs,
                       "se_bs": se, "li": d_obs - 1.96 * se,
                       "ls": d_obs + 1.96 * se, "p": 2 * norm.sf(abs(d_obs / se))})
-        print(f"  {nombre}: cambio en C = {d_obs:.4f}  EE = {se:.4f}")
     return pd.DataFrame(filas)
 
 
@@ -360,7 +357,8 @@ def _C_trienio(C_trienios_df: pd.DataFrame, m: int, p: int) -> str:
     return f"{v:.3f}".replace(".", ",", 1)
 
 
-def grafico_curvas(d: pd.DataFrame, t: pd.DataFrame) -> None:
+def grafico_curvas(d: pd.DataFrame, t: pd.DataFrame) -> dict:
+    """G3-G6 y G11: devuelve {nombre: figura}."""
     import matplotlib.pyplot as plt
     def axial(ax, m, p, color, titulo, texto_C, puntos=False, rotul=False):
         d_c = d[(d["muestra"] == m) & (d["periodo"] == p)]
@@ -385,6 +383,7 @@ def grafico_curvas(d: pd.DataFrame, t: pd.DataFrame) -> None:
         axial_estilado(ax, titulo)
 
     periodos = [(1, "2008-2010"), (2, "2022-2024")]
+    figs = {}
 
     # G3. Principal, los dos trienios con área de concentración
     fig, ejes = plt.subplots(1, 2, figsize=(10, 5.4))
@@ -399,8 +398,7 @@ def grafico_curvas(d: pd.DataFrame, t: pd.DataFrame) -> None:
              "menos pobres. Fuente: DANE, Estadísticas Vitales. Cálculos propios.",
              fontsize=6.5)
     fig.tight_layout(rect=(0, 0.06, 1, 1))
-    cb.guardar_grafico(fig, "G3_curvas_concentracion_trienios.png")
-    plt.close(fig)
+    figs["G3_curvas_concentracion_trienios"] = fig
 
     # G4. Superpuestas
     fig, ax = plt.subplots(figsize=(6.5, 5.5))
@@ -413,8 +411,7 @@ def grafico_curvas(d: pd.DataFrame, t: pd.DataFrame) -> None:
     axial_estilado(ax, "Curvas de concentración del bajo peso al nacer")
     ax.legend(fontsize=8.5, loc="lower right")
     fig.tight_layout()
-    cb.guardar_grafico(fig, "G4_curvas_superpuestas.png")
-    plt.close(fig)
+    figs["G4_curvas_superpuestas"] = fig
 
     # G5. Sin Bogotá
     fig, ejes = plt.subplots(1, 2, figsize=(10, 5.4))
@@ -427,8 +424,7 @@ def grafico_curvas(d: pd.DataFrame, t: pd.DataFrame) -> None:
              "al régimen contributivo. Ponderación: nacidos vivos. Fuente: DANE,\n"
              "Estadísticas Vitales. Cálculos propios.", fontsize=7)
     fig.tight_layout(rect=(0, 0.05, 1, 1))
-    cb.guardar_grafico(fig, "G5_curvas_sin_Bogota_trienios.png")
-    plt.close(fig)
+    figs["G5_curvas_sin_Bogota_trienios"] = fig
 
     # G6. Con vs. sin Bogotá, por trienio
     fig, ejes = plt.subplots(1, 2, figsize=(10, 5.6))
@@ -449,8 +445,7 @@ def grafico_curvas(d: pd.DataFrame, t: pd.DataFrame) -> None:
              "los otros 32 departamentos. Fuente: DANE, Estadísticas Vitales.\n"
              "Cálculos propios.", fontsize=7)
     fig.tight_layout(rect=(0, 0.05, 1, 1))
-    cb.guardar_grafico(fig, "G6_con_sin_Bogota_trienios.png")
-    plt.close(fig)
+    figs["G6_con_sin_Bogota_trienios"] = fig
 
     # G11. Observada vs. estandarizada, por trienio
     fig, ejes = plt.subplots(1, 2, figsize=(10, 5.6))
@@ -471,8 +466,8 @@ def grafico_curvas(d: pd.DataFrame, t: pd.DataFrame) -> None:
              "residencia (6 grupos) y edad materna (6 grupos). Fuente: DANE,\n"
              "Estadísticas Vitales. Cálculos propios.", fontsize=7)
     fig.tight_layout(rect=(0, 0.05, 1, 1))
-    cb.guardar_grafico(fig, "G11_curvas_estandarizadas_trienios.png")
-    plt.close(fig)
+    figs["G11_curvas_estandarizadas_trienios"] = fig
+    return figs
 
 
 def axial_estilado(ax, titulo: str) -> None:
@@ -490,7 +485,7 @@ def axial_estilado(ax, titulo: str) -> None:
 # --------------------------------------------------------------------------- #
 # G2. C anual: principal (IC bootstrap) y estandarizado y sin Bogotá
 # --------------------------------------------------------------------------- #
-def grafico_g2(boot: pd.DataFrame, anual: pd.DataFrame) -> None:
+def grafico_g2(boot: pd.DataFrame, anual: pd.DataFrame):
     import matplotlib.pyplot as plt
     pr = boot[boot["variante"] == variantes[V_PRINCIPAL - 1][0]]
     anual_std = anual[anual["variante"] == variantes[V_ESTAND - 1][0]]
@@ -517,8 +512,7 @@ def grafico_g2(boot: pd.DataFrame, anual: pd.DataFrame) -> None:
                 xy=(1, -0.16), xycoords="axes fraction", ha="right", fontsize=7,
                 va="top")
     fig.tight_layout()
-    cb.guardar_grafico(fig, "G2_indice_concentracion_anual.png")
-    plt.close(fig)
+    return fig
 
 
 # --------------------------------------------------------------------------- #
@@ -552,47 +546,48 @@ def validacion_proxy(panel: pd.DataFrame) -> pd.DataFrame | None:
 
 
 # --------------------------------------------------------------------------- #
-def main() -> None:
-    print("\nOBJETIVO 4 - Índice de concentración del BPN (2008-2024)")
-    celdas = cb.cargar_celdas()
-    cb.iniciar_estilo()
+# Interfaz del módulo: calcular -> imprimir / graficos (ver correr.py)
+# --------------------------------------------------------------------------- #
+LOG = "log_04_objetivo4"
 
-    print("\n--- A. Panel departamento-año ---")
+
+def calcular(celdas: pd.DataFrame) -> dict:
+    """Tablas del objetivo 4; las claves con "_" son intermedias (no van al xlsx)."""
     panel = panel_obj4(celdas)
+    trienios = trienio_agregar(panel)
+    r = {
+        "Panel_dpto_anio": panel,
+        "C_anual_variantes": C_anual(panel),
+        "C_anual_bootstrap": C_anual_bootstrap(panel),
+        "C_trienios": C_trienios(trienios),
+        "Diferencia_trienios": diferencia_trienios(trienios),
+        "Orden_dptos_trienios": orden_dptos(trienios),
+        "_curvas": curvas_datos(trienios),
+    }
+    valid = validacion_proxy(panel)
+    if valid is not None:
+        r["Validacion_proxy"] = valid
+    return r
+
+
+def imprimir(r: dict) -> None:
+    print("\nOBJETIVO 4 - Índice de concentración del BPN (2008-2024)")
+    panel = r["Panel_dpto_anio"]
+    print("\n--- A. Panel departamento-año ---")
     alt = panel[panel["anio"].eq(ANIO_FIN) & panel["altiplano"].eq(1)]
     print("Departamentos de altiplano (>50 % de nacidos a >=2.000 m):")
     print(alt[["departamento", "alt_dpto", "pct_alto2000", "pct_nc", "pct_bpn"]]
           .round(2).to_string(index=False))
-
-    print("\n--- B1. Índices por año (10 variantes) ---")
-    anual = C_anual(panel)
-
     print("\n--- B2. Bootstrap anual (principal y estandarizado) ---")
-    boot = C_anual_bootstrap(panel)
-    grafico_g2(boot, anual)
-
+    for f in r["C_anual_bootstrap"].itertuples():
+        print(f"  {f.anio} - {f.variante}: C = {f.C:.4f}  EE bootstrap = {f.se_bs:.4f}")
     print("\n--- C. Trienios 2008-2010 vs 2022-2024 ---")
-    trienios = trienio_agregar(panel)
-    por_trienio = C_trienios(trienios)
-    dif = diferencia_trienios(trienios)
-    orden = orden_dptos(trienios)
-
-    print("\n--- D. Curvas de concentración ---")
-    curvas = curvas_datos(trienios)
-    grafico_curvas(curvas, por_trienio)
-
-    valid = validacion_proxy(panel)
-
-    hojas = {"Panel_dpto_anio": panel, "C_anual_variantes": anual,
-             "C_anual_bootstrap": boot, "C_trienios": por_trienio,
-             "Diferencia_trienios": dif, "Orden_dptos_trienios": orden}
-    if valid is not None:
-        hojas["Validacion_proxy"] = valid
-    cb.exportar_excel_nuevo(hojas, EXCEL)
-    print(f"\nListo. Resultados en {cb.SALIDAS / EXCEL}")
+    for f in r["Diferencia_trienios"].itertuples():
+        print(f"  {f.variante}: cambio en C = {f.dif:.4f}  EE = {f.se_bs:.4f}")
 
 
-if __name__ == "__main__":
+def graficos(r: dict) -> dict:
     cb.iniciar_estilo()
-    with cb.log_salida("log_04_objetivo4"):
-        main()
+    return {"G2_indice_concentracion_anual": grafico_g2(r["C_anual_bootstrap"],
+                                                        r["C_anual_variantes"]),
+            **grafico_curvas(r["_curvas"], r["C_trienios"])}

@@ -1,7 +1,7 @@
 # -*- coding: utf-8 -*-
 # =============================================================================
 #  TRABAJO FINAL - BAJO PESO AL NACER EN COLOMBIA 2005-2024
-#  Python: 03_objetivo3_educacion_regimen.py
+#  Python: obj3_educacion.py
 #  (equivale a 03_Objetivo3_Educacion_Regimen.do, v2)
 #
 #  Objetivo 3: relación entre el nivel educativo de la madre / régimen de
@@ -28,13 +28,13 @@ Z95 = 1.96
 # --------------------------------------------------------------------------- #
 # 0. Celdas del objetivo 3
 # --------------------------------------------------------------------------- #
-def celdas_obj3() -> pd.DataFrame:
+def celdas_obj3(celdas: pd.DataFrame) -> pd.DataFrame:
     """Nacidos con dpto válido, peso y edad conocidos, agrupados por
     (anio, dpto_res, educ4, regimen, edad6, alt_cat); los faltantes de
     educ4/régimen/alt_cat pasan a la categoría 9 (se excluyen por modelo).
     A nivel de celda con exposición, los coeficientes de Poisson y sus errores
     agrupados coinciden con los de los datos individuales (nota técnica)."""
-    d = cb.cargar_celdas()
+    d = celdas
     d = d[d["dpto_res"].gt(0) & d["con_peso"].gt(0) & d["edad6"].notna()].copy()
     d["educ4"] = d["educ4"].fillna(9).astype(int)
     d["regimen"] = d["regimen"].fillna(9).astype(int)
@@ -231,8 +231,8 @@ def rii_sii(celdas: pd.DataFrame, a0: int, a1: int) -> pd.DataFrame:
 # G9/G10. Prevalencia estandarizada por año según educ4 y según régimen
 # --------------------------------------------------------------------------- #
 def grafico_estand(agg: pd.DataFrame, var: str, desde: int, titulo: str,
-                   archivo: str, colores: dict[int, str], nota: str,
-                   trazo3: str | None = None) -> None:
+                   colores: dict[int, str], nota: str,
+                   trazo3: str | None = None):
     import matplotlib.pyplot as plt
     fig, ax = plt.subplots(figsize=(8, 5))
     for nivel, color in colores.items():
@@ -249,56 +249,56 @@ def grafico_estand(agg: pd.DataFrame, var: str, desde: int, titulo: str,
     ax.annotate(nota, xy=(1, -0.14), xycoords="axes fraction", ha="right",
                 fontsize=7, va="top")
     fig.tight_layout()
-    cb.guardar_grafico(fig, archivo)
-    plt.close(fig)
+    return fig
 
 
 # --------------------------------------------------------------------------- #
-def main() -> None:
-    print("\nOBJETIVO 3 - Educación, régimen y BPN")
-    celdas = celdas_obj3()
-    pesos = poblacion_estandar(celdas)
-    print(f"celdas obj3: {len(celdas):,}")
+# Interfaz del módulo: calcular -> imprimir / graficos (ver correr.py)
+# --------------------------------------------------------------------------- #
+LOG = "log_03_objetivo3"
 
-    print("\n--- A. Prevalencia cruda y estandarizada por edad ---")
-    prev = prevalencias(celdas, pesos)
-    print(prev[["grupo", "categoria", "periodo", "pct_cruda", "pct_estand",
-                "li_estand", "ls_estand"]].round(2).to_string(index=False))
 
-    est_educ = estandarizada_anio(celdas, pesos, "educ4", 2005)
-    est_reg = estandarizada_anio(celdas, pesos, "regimen", 2008)
-
-    print("\n--- B. Razones de prevalencia (M0 a M5), cluster dpto ---")
-    lista = razones_prevalencia(celdas)
-    print(lista[["modelo", "variable", "categoria", "rp", "li", "ls"]]
-          .round(2).to_string(index=False))
-
-    print("\n--- C. RII y SII por educación ---")
-    d = celdas.merge(ridit_educacion(celdas), on=["anio", "educ4"])
+def calcular(celdas: pd.DataFrame) -> dict:
+    """Tablas del objetivo 3; las claves con "_" son intermedias (no van al xlsx)."""
+    c = celdas_obj3(celdas)
+    pesos = poblacion_estandar(c)
+    d = c.merge(ridit_educacion(c), on=["anio", "educ4"])
     d["p_celda"] = d["casos"] / d["n"]
-    rii_sii_df = pd.concat([rii_sii(d, 2005, 2024), rii_sii(d, 2008, 2024)],
-                          ignore_index=True)
-    print(rii_sii_df.round(3).to_string(index=False))
-
-    grafico_estand(est_educ, "educ4", 2005,
-                   "BPN según nivel educativo de la madre, 2005-2024",
-                   "G9_BPN_educacion_estandarizada.png",
-                   {1: "#A50026", 2: "#F46D43", 3: "#74ADD1", 4: "#313695"},
-                   "Estandarización directa por edad materna (6 grupos).\n"
-                   "Fuente: DANE, EEVV. Cálculos propios.")
-    grafico_estand(est_reg, "regimen", 2008,
-                   "BPN según régimen de afiliación de la madre, 2008-2024",
-                   "G10_BPN_regimen_estandarizada.png",
-                   {1: "#313695", 2: "#A50026", 3: "#888888"},
-                   "Estandarización directa por edad materna (6 grupos).\n"
-                   "Fuente: DANE, EEVV. Cálculos propios.", trazo3="--")
-
-    cb.exportar_excel_nuevo({"Prevalencias": prev, "RP_modelos": lista,
-                             "RII_SII_educacion": rii_sii_df}, EXCEL)
-    print(f"\nListo. Resultados en {cb.SALIDAS / EXCEL}")
+    return {
+        "Prevalencias": prevalencias(c, pesos),
+        "RP_modelos": razones_prevalencia(c),
+        "RII_SII_educacion": pd.concat([rii_sii(d, 2005, 2024), rii_sii(d, 2008, 2024)],
+                                       ignore_index=True),
+        "_est_educ": estandarizada_anio(c, pesos, "educ4", 2005),
+        "_est_reg": estandarizada_anio(c, pesos, "regimen", 2008),
+        "_n_celdas": len(c),
+    }
 
 
-if __name__ == "__main__":
+def imprimir(r: dict) -> None:
+    print("\nOBJETIVO 3 - Educación, régimen y BPN")
+    print(f"celdas obj3: {r['_n_celdas']:,}")
+    print("\n--- A. Prevalencia cruda y estandarizada por edad ---")
+    print(r["Prevalencias"][["grupo", "categoria", "periodo", "pct_cruda", "pct_estand",
+                             "li_estand", "ls_estand"]].round(2).to_string(index=False))
+    print("\n--- B. Razones de prevalencia (M0 a M5), cluster dpto ---")
+    print(r["RP_modelos"][["modelo", "variable", "categoria", "rp", "li", "ls"]]
+          .round(2).to_string(index=False))
+    print("\n--- C. RII y SII por educación ---")
+    print(r["RII_SII_educacion"].round(3).to_string(index=False))
+
+
+def graficos(r: dict) -> dict:
     cb.iniciar_estilo()
-    with cb.log_salida("log_03_objetivo3"):
-        main()
+    nota = ("Estandarización directa por edad materna (6 grupos).\n"
+            "Fuente: DANE, EEVV. Cálculos propios.")
+    return {
+        "G9_BPN_educacion_estandarizada": grafico_estand(
+            r["_est_educ"], "educ4", 2005,
+            "BPN según nivel educativo de la madre, 2005-2024",
+            {1: "#A50026", 2: "#F46D43", 3: "#74ADD1", 4: "#313695"}, nota),
+        "G10_BPN_regimen_estandarizada": grafico_estand(
+            r["_est_reg"], "regimen", 2008,
+            "BPN según régimen de afiliación de la madre, 2008-2024",
+            {1: "#313695", 2: "#A50026", 3: "#888888"}, nota, trazo3="--"),
+    }

@@ -1,7 +1,7 @@
 # -*- coding: utf-8 -*-
 # =============================================================================
 #  TRABAJO FINAL - BAJO PESO AL NACER EN COLOMBIA 2005-2024
-#  Python: 01_base_y_objetivo1.py   (equivale a 01_Base_y_Objetivo1.do, v2)
+#  Python: obj1_evolucion.py   (equivale a 01_Base_y_Objetivo1.do, v2)
 #
 #  Parte A/B (base y variables armonizadas) la hace comun_bpn.cargar_celdas.
 #  Aquí va la Parte C del do-file: Objetivo 1 - evolución y distribución del
@@ -169,7 +169,7 @@ def distribucion_peso() -> pd.DataFrame:
 # --------------------------------------------------------------------------- #
 # G1. Cruda con IC 95 % y estandarizada por edad
 # --------------------------------------------------------------------------- #
-def grafico_g1(nac: pd.DataFrame, estand: pd.DataFrame) -> None:
+def grafico_g1(nac: pd.DataFrame, estand: pd.DataFrame):
     import matplotlib.pyplot as plt
     d = nac[["anio", "pct_bpn", "li_bpn", "ls_bpn"]].merge(
         estand[["anio", "pct_estand"]], on="anio")
@@ -190,60 +190,54 @@ def grafico_g1(nac: pd.DataFrame, estand: pd.DataFrame) -> None:
                 xy=(1, -0.14), xycoords="axes fraction", ha="right",
                 fontsize=7, va="top")
     fig.tight_layout()
-    cb.guardar_grafico(fig, "G1_bpn_nacional.png")
-    plt.close(fig)
+    return fig
 
 
 # --------------------------------------------------------------------------- #
-def main() -> None:
-    print("\nPARTE C. OBJETIVO 1 - Evolución y distribución del BPN")
-    celdas = cb.cargar_celdas()
-    cb.iniciar_estilo()
+# Interfaz del módulo: calcular -> imprimir / graficos (ver correr.py)
+# --------------------------------------------------------------------------- #
+LOG = "log_01_base_objetivo1"
 
-    print("\n--- C1. Nacional por año ---")
-    nac = nacional_anio(celdas)
-    print(nac[["anio", "con_peso", "pct_bpn", "li_bpn", "ls_bpn",
-               "pct_bpn_term"]].round(2).to_string(index=False))
 
-    print("\n--- C2. Nacional estandarizada por edad de la madre ---")
-    estand = nacional_estandarizada(celdas)
-    print(estand[["anio", "pct_cruda", "pct_estand", "li_estand", "ls_estand"]]
-          .round(2).to_string(index=False))
-
-    print("\n--- C3. APC (Poisson robusto) ---")
-    tabla_apc = apc(celdas)
-    print(tabla_apc[tabla_apc["dpto_res"].eq(0)].round(2).to_string(index=False))
-
-    print("\n--- C4. departamentos y años ---")
+def calcular(celdas: pd.DataFrame) -> dict:
+    """Tablas del objetivo 1; cada clave es una hoja del xlsx."""
     largo = departamento_largo(celdas)
-    ancho = departamento_ancho(largo)
+    return {
+        "Nacional": nacional_anio(celdas),
+        "Nacional_estandarizada": nacional_estandarizada(celdas),
+        "APC": apc(celdas),
+        "Departamento_largo": largo,
+        "Departamento_%BPN": departamento_ancho(largo),
+        "Calidad_registro_peso": calidad_peso(celdas),
+        "Sexo": por_sexo(),
+        "Distribucion_peso": distribucion_peso(),
+        "Control_carga": pd.read_csv(cb.PROCESADOS / "control_carga.csv"),
+    }
 
+
+def imprimir(r: dict) -> None:
+    print("\nPARTE C. OBJETIVO 1 - Evolución y distribución del BPN")
+    print("\n--- C1. Nacional por año ---")
+    print(r["Nacional"][["anio", "con_peso", "pct_bpn", "li_bpn", "ls_bpn",
+                         "pct_bpn_term"]].round(2).to_string(index=False))
+    print("\n--- C2. Nacional estandarizada por edad de la madre ---")
+    print(r["Nacional_estandarizada"][["anio", "pct_cruda", "pct_estand",
+                                       "li_estand", "ls_estand"]]
+          .round(2).to_string(index=False))
+    print("\n--- C3. APC (Poisson robusto) ---")
+    apc_ = r["APC"]
+    print(apc_[apc_["dpto_res"].eq(0)].round(2).to_string(index=False))
     print("\n--- C5. Calidad del registro del peso ---")
-    calidad = calidad_peso(celdas)
-    print(calidad.sort_values("pct_sin_peso4", ascending=False)
+    print(r["Calidad_registro_peso"].sort_values("pct_sin_peso4", ascending=False)
           [["departamento", "pct_sin_peso1", "pct_sin_peso4"]]
           .head(8).round(2).to_string(index=False))
-
     print("\n--- C6. Por sexo ---")
-    sexo = por_sexo()
-    print(sexo[["anio", "pct_bpnHombre", "pct_bpnMujer"]].round(2).to_string(index=False))
-
+    print(r["Sexo"][["anio", "pct_bpnHombre", "pct_bpnMujer"]]
+          .round(2).to_string(index=False))
     print("\n--- C7. Distribución del peso ---")
-    dist = distribucion_peso()
-    print(dist.round(2).to_string(index=False))
-
-    grafico_g1(nac, estand)
-
-    control = pd.read_csv(cb.PROCESADOS / "control_carga.csv")
-    cb.exportar_excel_nuevo({
-        "Nacional": nac, "Nacional_estandarizada": estand, "APC": tabla_apc,
-        "Departamento_largo": largo, "Departamento_%BPN": ancho,
-        "Calidad_registro_peso": calidad, "Sexo": sexo,
-        "Distribucion_peso": dist, "Control_carga": control,
-    }, EXCEL)
-    print(f"\nListo. Resultados en {cb.SALIDAS / EXCEL}")
+    print(r["Distribucion_peso"].round(2).to_string(index=False))
 
 
-if __name__ == "__main__":
-    with cb.log_salida("log_01_base_objetivo1"):
-        main()
+def graficos(r: dict) -> dict:
+    cb.iniciar_estilo()
+    return {"G1_bpn_nacional": grafico_g1(r["Nacional"], r["Nacional_estandarizada"])}

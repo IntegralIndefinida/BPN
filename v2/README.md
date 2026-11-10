@@ -14,25 +14,42 @@ logs), leyendo los datos con la librería `dane-data`.
   (`dd.eevv.available()`).
 - Insumo `3.0 Datos/altitud_municipios.csv` (altitud por municipio).
 
-## Ejecución (en orden)
+## Ejecución
 
 ```
 cd "…/3. Metodologia/Code/python/v2"
-~/.venvs/datascience/bin/python 01_base_y_objetivo1.py
-~/.venvs/datascience/bin/python 02_objetivo2_desigualdades_rt_dt.py
-~/.venvs/datascience/bin/python 03_objetivo3_educacion_regimen.py
-~/.venvs/datascience/bin/python 04_objetivo4_indice_concentracion.py
+~/.venvs/datascience/bin/python correr.py        # los 4 objetivos
+~/.venvs/datascience/bin/python correr.py 2 4    # solo los objetivos 2 y 4
 ```
+
+`correr.py` carga las celdas una vez y, por objetivo, escribe el log, el xlsx
+y los png. La notebook `sintesis.ipynb` recalcula todo con los mismos módulos
+y muestra tablas y gráficos junto al texto del análisis.
+
+## Diseño modular
+
+Cada módulo `objN_*.py` expone tres funciones:
+
+- `calcular(celdas) -> dict`: las tablas del objetivo. Cada clave es una hoja
+  del xlsx; las claves que empiezan con `_` son intermedias (para gráficos o
+  el log) y no se exportan.
+- `imprimir(r)`: el resumen que va a la consola y al log.
+- `graficos(r) -> dict`: las figuras de matplotlib, sin guardarlas; la clave
+  es el nombre del png.
+
+Ningún módulo escribe archivos por su cuenta: eso lo hace `correr.py`.
 
 ## Scripts
 
 | Script | Equivalente Stata | Contenido |
 |---|---|---|
+| `correr.py` | — | corre los objetivos y guarda log, xlsx y png |
+| `sintesis.ipynb` | — | síntesis del análisis: recalcula y muestra tablas y gráficos |
 | `comun_bpn.py` | Parte A/B de `01_Base_y_Objetivo1.do` | rutas, etiquetas, carga con `dd.eevv`, celdas de conteos, imputación de altitud, caché, helpers (Wilson, APC Poisson, Excel, gráficos, log) |
-| `01_base_y_objetivo1.py` | `01_Base_y_Objetivo1.do` C | prevalencia nacional (cruda y estandarizada), APC, departamentos, calidad del registro del peso, sexo, distribución del peso, G1 |
-| `02_objetivo2_desigualdades_rt_dt.py` | `02_Objetivo2_Desigualdades_RT_DT.do` | RP/DP por quinquenio y año frente a la referencia elegible, Theil/MLD, PAR/PAF, extremos, G7/G8 |
-| `03_objetivo3_educacion_regimen.py` | `03_Objetivo3_Educacion_Regimen.do` | prevalencias por educación y régimen, Poisson M0–M5 con errores cluster dpto, RII/SII, G9/G10 |
-| `04_objetivo4_indice_concentracion.py` | `04_Objetivo4_Indice_Concentracion.do` | estandarización indirecta por altitud y edad, índices C/W/E por regresión conveniente (Kakwani), 10 variantes, bootstrap por departamento, trienios 2008-2010 vs 2022-2024 con bootstrap pareado, curvas G3–G6/G11, G2 |
+| `obj1_evolucion.py` | `01_Base_y_Objetivo1.do` C | prevalencia nacional (cruda y estandarizada), APC, departamentos, calidad del registro del peso, sexo, distribución del peso, G1 |
+| `obj2_desigualdades.py` | `02_Objetivo2_Desigualdades_RT_DT.do` | RP/DP por quinquenio y año frente a la referencia elegible, Theil/MLD, PAR/PAF, extremos, G7/G8 |
+| `obj3_educacion.py` | `03_Objetivo3_Educacion_Regimen.do` | prevalencias por educación y régimen, Poisson M0–M5 con errores cluster dpto, RII/SII, G9/G10 |
+| `obj4_concentracion.py` | `04_Objetivo4_Indice_Concentracion.do` | estandarización indirecta por altitud y edad, índices C/W/E por regresión conveniente (Kakwani), 10 variantes, bootstrap por departamento, trienios 2008-2010 vs 2022-2024 con bootstrap pareado, curvas G3–G6/G11, G2 |
 
 ## Datos y caché
 

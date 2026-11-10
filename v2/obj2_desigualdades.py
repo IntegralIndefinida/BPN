@@ -1,7 +1,7 @@
 # -*- coding: utf-8 -*-
 # =============================================================================
 #  TRABAJO FINAL - BAJO PESO AL NACER EN COLOMBIA 2005-2024
-#  Python: 02_objetivo2_desigualdades_rt_dt.py
+#  Python: obj2_desigualdades.py
 #  (equivale a 02_Objetivo2_Desigualdades_RT_DT.do, v2)
 #
 #  Objetivo 2: desigualdades departamentales en el BPN mediante razones y
@@ -160,7 +160,7 @@ def medidas_resumen(panel: pd.DataFrame) -> pd.DataFrame:
 # --------------------------------------------------------------------------- #
 # G7. Dot plot de RP por departamento, primer y último quinquenio
 # --------------------------------------------------------------------------- #
-def grafico_g7(ancho: pd.DataFrame) -> None:
+def grafico_g7(ancho: pd.DataFrame):
     import matplotlib.pyplot as plt
     d = (ancho[["departamento", "rt1", "rt4"]]
          .sort_values(["rt4", "rt1"], ascending=[False, False])
@@ -184,14 +184,13 @@ def grafico_g7(ancho: pd.DataFrame) -> None:
                 "Fuente: DANE, EEVV.",
                 xy=(0, -0.12), xycoords="axes fraction", ha="left", fontsize=7)
     fig.tight_layout()
-    cb.guardar_grafico(fig, "G7_RP_departamentos_quinquenios.png")
-    plt.close(fig)
+    return fig
 
 
 # --------------------------------------------------------------------------- #
 # G8. Theil y PAF anuales (eje dual)
 # --------------------------------------------------------------------------- #
-def grafico_g8(resumen: pd.DataFrame) -> None:
+def grafico_g8(resumen: pd.DataFrame):
     import matplotlib.pyplot as plt
     d = (resumen[resumen["tipo"].eq("Año")]
          .assign(anio=lambda t: t["periodo"].astype(int))
@@ -215,22 +214,34 @@ def grafico_g8(resumen: pd.DataFrame) -> None:
                 ha="right", fontsize=7, va="top")
     ax2.grid(False)
     fig.tight_layout()
-    cb.guardar_grafico(fig, "G8_Theil_PAF_anual.png")
-    plt.close(fig)
+    return fig
 
 
 # --------------------------------------------------------------------------- #
-def main() -> None:
-    print("\nOBJETIVO 2 - Desigualdades RT/DT (quinquenios y años)")
-    celdas = cb.cargar_celdas()
-    cb.iniciar_estilo()
+# Interfaz del módulo: calcular -> imprimir / graficos (ver correr.py)
+# --------------------------------------------------------------------------- #
+LOG = "log_02_objetivo2"
 
-    print("\n--- A. Panel departamento-año ---")
+
+def calcular(celdas: pd.DataFrame) -> dict:
+    """Tablas del objetivo 2; las claves con "_" son intermedias (no van al xlsx)."""
     panel = panel_dpto_anio(celdas)
-    print(f"filas: {len(panel):,}  dptos: {panel.dpto_res.nunique()}")
-
-    print("\n--- B. RP/DP por quinquenio ---")
     quinq = rt_dt_quinquenio(panel)
+    return {
+        "RP_DP_quinquenio": quinq,
+        "RP_DP_ancho": rt_dt_ancho(quinq),
+        "RP_DP_anual": rt_dt_anual(panel),
+        "Medidas_resumen": medidas_resumen(panel),
+        "_panel": panel,
+    }
+
+
+def imprimir(r: dict) -> None:
+    print("\nOBJETIVO 2 - Desigualdades RT/DT (quinquenios y años)")
+    panel, quinq = r["_panel"], r["RP_DP_quinquenio"]
+    print("\n--- A. Panel departamento-año ---")
+    print(f"filas: {len(panel):,}  dptos: {panel.dpto_res.nunique()}")
+    print("\n--- B. RP/DP por quinquenio ---")
     no_elegibles = quinq[quinq["elegible"].eq(0)]
     print("NO elegibles por quinquenio:")
     if len(no_elegibles):
@@ -241,30 +252,18 @@ def main() -> None:
     print("Referencia por quinquenio:")
     print(quinq[quinq["es_ref"].eq(1)][["quinq", "departamento", "ref"]]
           .drop_duplicates().to_string(index=False))
-    ancho = rt_dt_ancho(quinq)
-
     print("\n--- C. Medidas resumen ---")
-    resumen = medidas_resumen(panel)
+    resumen = r["Medidas_resumen"]
     print(resumen[resumen["tipo"].eq("Quinquenio")]
           [["periodo", "ref", "dpto_ref", "par", "paf", "theil"]]
           .round(2).to_string(index=False))
-
     print("\n--- RP/DP anual ---")
-    anual = rt_dt_anual(panel)
-    muestra = anual[anual["anio"].isin([2005, 2024])]
-    print(muestra[["anio", "departamento", "pct", "ref", "rt"]]
+    anual = r["RP_DP_anual"]
+    print(anual[anual["anio"].isin([2005, 2024])][["anio", "departamento", "pct", "ref", "rt"]]
           .round(2).to_string(index=False))
 
-    grafico_g7(ancho)
-    grafico_g8(resumen)
 
-    cb.exportar_excel_nuevo({
-        "RP_DP_quinquenio": quinq, "RP_DP_ancho": ancho, "RP_DP_anual": anual,
-        "Medidas_resumen": resumen,
-    }, EXCEL)
-    print(f"\nListo. Resultados en {cb.SALIDAS / EXCEL}")
-
-
-if __name__ == "__main__":
-    with cb.log_salida("log_02_objetivo2"):
-        main()
+def graficos(r: dict) -> dict:
+    cb.iniciar_estilo()
+    return {"G7_RP_departamentos_quinquenios": grafico_g7(r["RP_DP_ancho"]),
+            "G8_Theil_PAF_anual": grafico_g8(r["Medidas_resumen"])}
