@@ -304,12 +304,13 @@ def diferencia_trienios(trienios: pd.DataFrame) -> pd.DataFrame:
         c1 = ic_conc(t1[col_h], t1[col_w], t1[col_r])["C"]
         c2 = ic_conc(t2[col_h], t2[col_w], t2[col_r])["C"]
 
-        o1, o2 = np.argsort(r1, kind="stable"), np.argsort(r2, kind="stable")
+        # t1 y t2 alineados por dpto_res: el mismo idx toma los mismos dptos
+        # en ambos periodos, y cada réplica se reordena por su propio rango.
         rng = np.random.default_rng(SEMILLA + 5000 + v)
         G = len(comunes)
         idx = rng.integers(0, G, size=(REPS, G))
-        C1_b = ic_vec(h1[o1][idx], w1[o1][idx])
-        C2_b = ic_vec(h2[o2][idx], w2[o2][idx])
+        C1_b = ic_vec(h1[idx], w1[idx], r1[idx])
+        C2_b = ic_vec(h2[idx], w2[idx], r2[idx])
         dif_b = C2_b - C1_b
         d_obs = c2 - c1
         se = dif_b.std(ddof=1)
