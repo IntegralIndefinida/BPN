@@ -353,8 +353,11 @@ def apc_poisson(df: pd.DataFrame, ini: int = ANIO_INI, fin: int = ANIO_FIN) -> d
     X = sm.add_constant(d["anio"].to_numpy(float))
     res = sm.GLM(d["bpn_n"].to_numpy(float), X, family=sm.families.Poisson(),
                  offset=np.log(d["con_peso"].to_numpy(float))
-                 ).fit(cov_type="HC1")
-    b, se = float(res.params[1]), float(res.bse[1])
+                 ).fit(cov_type="HC0")
+    # Stata (glm, vce(robust)) multiplica la varianza por n/(n-1); el HC1 de
+    # statsmodels en GLM no aplica ninguna corrección.
+    b = float(res.params[1])
+    se = float(res.bse[1]) * math.sqrt(len(d) / (len(d) - 1))
     return {"apc": 100 * (math.exp(b) - 1),
             "li": 100 * (math.exp(b - 1.96 * se) - 1),
             "ls": 100 * (math.exp(b + 1.96 * se) - 1),
