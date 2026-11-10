@@ -70,7 +70,7 @@ def _modelo_altitud(d: pd.DataFrame):
     k = k[k["con_peso"] > 0]
     X = pd.concat([pd.get_dummies(k[c].astype(int), prefix=c, dtype=float)
                    .drop(columns=f"{c}_{ref}")
-                   for c, ref in [*_REF_STD.items(), ("anio", ANIO_INI),
+                   for c, ref in [*_REF_STD.items(), ("anio", int(k["anio"].min())),
                                   ("dpto_res", cb.DPTOS_VALIDOS[0])]], axis=1)
     return sm.GLM(k["bpn_n"], sm.add_constant(X), family=sm.families.Poisson(),
                   offset=np.log(k["con_peso"])).fit(
@@ -82,7 +82,8 @@ def estandarizar_indirecta(d: pd.DataFrame) -> pd.DataFrame:
 
     Agrega n_s y casos_s (nacidos con peso y casos de BPN que entran al
     cálculo) y esperado_s: los casos esperados solo por la altitud y la edad,
-    según los coeficientes de _modelo_altitud (comunes a 2008-2024), y
+    según los coeficientes de _modelo_altitud (un único modelo estimado con
+    2005-2024 y compartido por los objetivos 2 y 4), y
     reescalados para que cada año sumen los casos observados. Celdas sin edad
     o sin alt_cat quedan fuera: n_s, casos_s y esperado_s = 0.
     La tasa estandarizada (pct_is) se obtiene después, en calc_ind."""
@@ -106,8 +107,7 @@ def estandarizar_indirecta(d: pd.DataFrame) -> pd.DataFrame:
 def efecto_altitud_edad(celdas: pd.DataFrame) -> pd.DataFrame:
     """Razones de prevalencia de BPN por altitud y edad del modelo de la
     estandarización (IC 95 % con errores agrupados por departamento)."""
-    res = _modelo_altitud(celdas[celdas["dpto_res"].gt(0)
-                                 & celdas["anio"].between(ANIO_INI, ANIO_FIN)])
+    res = _modelo_altitud(celdas[celdas["dpto_res"].gt(0)])
     filas = []
     for var, etqs in [("alt_cat", ALT_ETQ), ("edad6", cb.EDAD6_ETQ)]:
         for nivel, etq in etqs.items():
@@ -119,9 +119,9 @@ def efecto_altitud_edad(celdas: pd.DataFrame) -> pd.DataFrame:
 
 
 def panel_obj4(celdas: pd.DataFrame) -> pd.DataFrame:
-    d = celdas[celdas["dpto_res"].gt(0) & celdas["anio"].between(ANIO_INI, ANIO_FIN)]
-    d = d.rename(columns={"n": "nacidos"})
-    d = estandarizar_indirecta(d)
+    d = celdas[celdas["dpto_res"].gt(0)].rename(columns={"n": "nacidos"})
+    d = estandarizar_indirecta(d)              # modelo con todos los años
+    d = d[d["anio"].between(ANIO_INI, ANIO_FIN)]
     # Altitud media del dpto-año (ponderada por nacimientos) y nacidos a >=2.000 m
     d = d.assign(n_alt=d["nacidos"] * d["altitud_m"].fillna(0.0).to_numpy(),
                  n_alto=d["nacidos"].where(d["alt_cat"].astype(float) >= 5, 0.0))

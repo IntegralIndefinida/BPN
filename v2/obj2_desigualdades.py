@@ -48,7 +48,8 @@ def panel_ajustado(celdas: pd.DataFrame, panel: pd.DataFrame) -> pd.DataFrame:
 
     Mismos nacidos y con_peso que `panel`; bpn_n = con_peso x prevalencia
     estandarizada del año (observada - esperada + media nacional), con la
-    estandarización indirecta del objetivo 4 estimada aquí sobre 2005-2024."""
+    estandarización indirecta del objetivo 4 (un único modelo estimado con
+    2005-2024, compartido con el objetivo 4)."""
     d = estandarizar_indirecta(celdas[celdas["dpto_res"].gt(0)])
     s = d.groupby(["dpto_res", "anio"], as_index=False)[["n_s", "casos_s",
                                                          "esperado_s"]].sum()
