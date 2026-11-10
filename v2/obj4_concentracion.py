@@ -10,7 +10,8 @@
 #  contributivo (10 variantes). Regresión conveniente de Kakwani et al.
 #  (1997). Inferencia: bootstrap por departamento (1.000 réplicas; pareado
 #  para la diferencia entre trienios). Estandarización indirecta por altitud
-#  del municipio y edad materna.
+#  del municipio y edad materna, con un modelo de Poisson con efectos fijos
+#  de departamento (en esto NO replica el do-file; ver estandarizar_indirecta).
 #
 #  Enfoque de superpoblación: los 33 departamentos se tratan como una
 #  realización de un proceso; el bootstrap por departamento mide la
@@ -54,20 +55,75 @@ V_SIN_BOGOTA = 3
 # --------------------------------------------------------------------------- #
 # A. Panel departamento-año (2008-2024) con estandarización indirecta
 # --------------------------------------------------------------------------- #
+ALT_ETQ = {1: "Menos de 500 m", 2: "500-999 m", 3: "1.000-1.499 m",
+           4: "1.500-1.999 m", 5: "2.000-2.499 m", 6: "2.500 m y más"}
+_REF_STD = {"alt_cat": 1, "edad6": 2}     # categorías de referencia del modelo
+
+
+def _modelo_altitud(d: pd.DataFrame):
+    """Poisson de BPN sobre altitud y edad materna, con año y efectos fijos de
+    departamento como controles (errores agrupados por departamento).
+
+    Los efectos fijos hacen que el efecto de la altitud se estime comparando
+    municipios de un mismo departamento, sin mezclarlo con las demás
+    diferencias entre departamentos (O'Donnell et al. 2008, cap. 5: se
+    controla por el departamento, pero no se estandariza por él)."""
+    k = (d[d["alt_cat"].notna() & d["edad6"].notna()]
+         .groupby(["anio", "dpto_res", "alt_cat", "edad6"], as_index=False)
+         [["con_peso", "bpn_n"]].sum())
+    k = k[k["con_peso"] > 0]
+    X = pd.concat([pd.get_dummies(k[c].astype(int), prefix=c, dtype=float)
+                   .drop(columns=f"{c}_{ref}")
+                   for c, ref in [*_REF_STD.items(), ("anio", ANIO_INI),
+                                  ("dpto_res", cb.DPTOS_VALIDOS[0])]], axis=1)
+    return sm.GLM(k["bpn_n"], sm.add_constant(X), family=sm.families.Poisson(),
+                  offset=np.log(k["con_peso"])).fit(
+        cov_type="cluster", cov_kwds={"groups": k["dpto_res"].to_numpy()})
+
+
 def estandarizar_indirecta(d: pd.DataFrame) -> pd.DataFrame:
     """Estandarización indirecta por altitud y edad materna, celda a celda.
 
     Agrega n_s y casos_s (nacidos con peso y casos de BPN que entran al
-    cálculo) y esperado_s: los casos esperados si la celda tuviera la tasa
-    observada en su grupo (anio, alt_cat, edad6). Celdas sin edad (o sin
-    alt_cat) quedan fuera: n_s, casos_s y esperado_s = 0.
-    La tasa estandarizada (pct_is) se obtiene después, en calc_ind."""
-    g = d.groupby(["anio", "alt_cat", "edad6"])
-    p_celda = g["bpn_n"].transform("sum") / g["con_peso"].transform("sum")
-    con_edad = d["edad6"].notna()
-    return d.assign(n_s=d["con_peso"].where(con_edad, 0.0),
-                    casos_s=d["bpn_n"].where(con_edad, 0.0),
-                    esperado_s=(p_celda * d["con_peso"]).fillna(0.0))
+    cálculo) y esperado_s: los casos esperados solo por la altitud y la edad,
+    según los coeficientes de _modelo_altitud (comunes a 2008-2024), y
+    reescalados para que cada año sumen los casos observados. Celdas sin edad
+    o sin alt_cat quedan fuera: n_s, casos_s y esperado_s = 0.
+    La tasa estandarizada (pct_is) se obtiene después, en calc_ind.
+
+    No replica el do-file, que usa la tasa del grupo (anio, alt_cat, edad6)
+    incluido el propio departamento: Bogotá es ~2/3 de los nacidos a >=2.500 m
+    y quedaba comparada consigo misma."""
+    b = _modelo_altitud(d).params
+
+    def efecto(var: str) -> pd.Series:      # coeficiente de la celda (ref. = 0)
+        coef = {float(n.rsplit("_", 1)[1]): v
+                for n, v in b.items() if n.startswith(f"{var}_")}
+        return d[var].astype("float").map(coef).fillna(0.0)
+
+    dentro = d["alt_cat"].notna() & d["edad6"].notna()
+    casos = d["bpn_n"].where(dentro, 0.0)
+    esp = (d["con_peso"] * np.exp(efecto("alt_cat") + efecto("edad6"))).where(dentro, 0.0)
+    esp *= (casos.groupby(d["anio"]).transform("sum")
+            / esp.groupby(d["anio"]).transform("sum"))
+    assert np.isclose(esp.sum(), casos.sum()), "esperados != observados"
+    return d.assign(n_s=d["con_peso"].where(dentro, 0.0), casos_s=casos,
+                    esperado_s=esp)
+
+
+def efecto_altitud_edad(celdas: pd.DataFrame) -> pd.DataFrame:
+    """Razones de prevalencia de BPN por altitud y edad del modelo de la
+    estandarización (IC 95 % con errores agrupados por departamento)."""
+    res = _modelo_altitud(celdas[celdas["dpto_res"].gt(0)
+                                 & celdas["anio"].between(ANIO_INI, ANIO_FIN)])
+    filas = []
+    for var, etqs in [("alt_cat", ALT_ETQ), ("edad6", cb.EDAD6_ETQ)]:
+        for nivel, etq in etqs.items():
+            b, se = (0.0, 0.0) if nivel == _REF_STD[var] else (
+                res.params[f"{var}_{nivel}"], res.bse[f"{var}_{nivel}"])
+            filas.append({"variable": var, "categoria": etq, "rp": np.exp(b),
+                          "li": np.exp(b - 1.96 * se), "ls": np.exp(b + 1.96 * se)})
+    return pd.DataFrame(filas)
 
 
 def panel_obj4(celdas: pd.DataFrame) -> pd.DataFrame:
@@ -471,8 +527,9 @@ def grafico_curvas(d: pd.DataFrame, t: pd.DataFrame) -> dict:
     fig.suptitle("Curvas de concentración del BPN observada y estandarizada "
                  "por altitud y edad", fontsize=12)
     fig.text(0.01, 0.005, "Estandarización indirecta por altitud del municipio de\n"
-             "residencia (6 grupos) y edad materna (6 grupos). Fuente: DANE,\n"
-             "Estadísticas Vitales. Cálculos propios.", fontsize=7)
+             "residencia (6 grupos) y edad materna (6 grupos), con efectos fijos\n"
+             "de departamento. Fuente: DANE, Estadísticas Vitales. Cálculos propios.",
+             fontsize=7)
     fig.tight_layout(rect=(0, 0.05, 1, 1))
     figs["G11_curvas_estandarizadas_trienios"] = fig
     return figs
@@ -570,6 +627,7 @@ def calcular(celdas: pd.DataFrame) -> dict:
         "C_trienios": C_trienios(trienios),
         "Diferencia_trienios": diferencia_trienios(trienios),
         "Orden_dptos_trienios": orden_dptos(trienios),
+        "Efecto_altitud_edad": efecto_altitud_edad(celdas),
         "_curvas": curvas_datos(trienios),
     }
     valid = validacion_proxy(panel)
@@ -586,6 +644,8 @@ def imprimir(r: dict) -> None:
     print("Departamentos de altiplano (>50 % de nacidos a >=2.000 m):")
     print(alt[["departamento", "alt_dpto", "pct_alto2000", "pct_nc", "pct_bpn"]]
           .round(2).to_string(index=False))
+    print("\nModelo de la estandarización (RP por altitud y edad, EF de departamento):")
+    print(r["Efecto_altitud_edad"].round(3).to_string(index=False))
     print("\n--- B2. Bootstrap anual (principal y estandarizado) ---")
     for f in r["C_anual_bootstrap"].itertuples():
         print(f"  {f.anio} - {f.variante}: C = {f.C:.4f}  EE bootstrap = {f.se_bs:.4f}")

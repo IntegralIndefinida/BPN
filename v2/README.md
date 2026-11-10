@@ -86,6 +86,13 @@ Ningún módulo escribe archivos por su cuenta: eso lo hace `correr.py`.
   no coinciden numéricamente con Stata: el generador de números aleatorios es
   distinto (NumPy PCG64). Con las mismas semillas los resultados son
   reproducibles entre corridas de Python.
+- La estandarización indirecta por altitud y edad del objetivo 4 **no replica
+  el do-file**. El do-file usa la tasa del grupo (año, altitud, edad) incluido
+  el propio departamento; como Bogotá es ~2/3 de los nacidos a ≥2.500 m,
+  quedaba comparada consigo misma. Python usa un Poisson con altitud, edad,
+  año y efectos fijos de departamento (O'Donnell et al. 2008, cap. 5) y predice
+  los casos esperados solo con altitud y edad. Los coeficientes van en la hoja
+  `Efecto_altitud_edad`.
 - El régimen de afiliación solo es comparable desde 2008 (objetivos 3 y 4).
 - La validación del ordenamiento contra NBI/IPM (hoja `Validacion_proxy`) se
   omite con un aviso si no existe la plantilla
