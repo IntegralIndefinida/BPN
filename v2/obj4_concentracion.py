@@ -2,23 +2,20 @@
 # =============================================================================
 #  TRABAJO FINAL - BAJO PESO AL NACER EN COLOMBIA 2005-2024
 #  Python: obj4_concentracion.py
-#  (equivale a 04_Objetivo4_Indice_Concentracion.do, v2)
 #
 #  Objetivo 4: desigualdades socioeconómicas del BPN entre departamentos con
 #  curvas e índices de concentración (C, Wagstaff W y Erreygers E), ponderados
 #  por nacidos. Ordenamiento principal: % de madres NO afiliadas al régimen
 #  contributivo (10 variantes). Regresión conveniente de Kakwani et al.
 #  (1997). Inferencia: bootstrap por departamento (1.000 réplicas; pareado
-#  para la diferencia entre trienios) con IC 95 % percentil. Estandarización indirecta por altitud
-#  del municipio y edad materna, con un modelo de Poisson con efectos fijos
-#  de departamento (en esto NO replica el do-file; ver estandarizar_indirecta).
+#  para la diferencia entre trienios) con IC 95 % percentil. Estandarización
+#  indirecta por altitud del municipio y edad materna mediante un modelo de
+#  Poisson con efectos fijos de departamento.
 #
 #  Enfoque de superpoblación: los 33 departamentos se tratan como una
 #  realización de un proceso; el bootstrap por departamento mide la
 #  variabilidad del índice ante esa realización (los nacimientos son censales).
 #  Salidas: Objetivo4_Indice_Concentracion_BPN.xlsx, G2-G6 y G11, log.
-#  Las semillas replican las del do-file (20241 + ...); los replicados no
-#  coinciden con Stata porque el generador de números aleatorios es distinto.
 # =============================================================================
 import numpy as np
 import pandas as pd
@@ -88,11 +85,7 @@ def estandarizar_indirecta(d: pd.DataFrame) -> pd.DataFrame:
     según los coeficientes de _modelo_altitud (comunes a 2008-2024), y
     reescalados para que cada año sumen los casos observados. Celdas sin edad
     o sin alt_cat quedan fuera: n_s, casos_s y esperado_s = 0.
-    La tasa estandarizada (pct_is) se obtiene después, en calc_ind.
-
-    No replica el do-file, que usa la tasa del grupo (anio, alt_cat, edad6)
-    incluido el propio departamento: Bogotá es ~2/3 de los nacidos a >=2.500 m
-    y quedaba comparada consigo misma."""
+    La tasa estandarizada (pct_is) se obtiene después, en calc_ind."""
     b = _modelo_altitud(d).params
 
     def efecto(var: str) -> pd.Series:      # coeficiente de la celda (ref. = 0)
@@ -161,7 +154,7 @@ def panel_obj4(celdas: pd.DataFrame) -> pd.DataFrame:
 
 
 def calc_ind(d: pd.DataFrame, grupo: str) -> pd.DataFrame:
-    """calc_ind del do-file: prevalencias, estandarización indirecta y SES."""
+    """calc_ind del análisis: prevalencias, estandarización indirecta y SES."""
     d = d.copy()
     d["pct_bpn"] = 100 * d["bpn_n"] / d["con_peso"]
     d["pct_falt"] = 100 * (d["nacidos"] - d["con_peso"]) / d["nacidos"]
@@ -185,7 +178,7 @@ def calc_ind(d: pd.DataFrame, grupo: str) -> pd.DataFrame:
 # ic_conc: índice de concentración por regresión conveniente (Kakwani 1997)
 # --------------------------------------------------------------------------- #
 def ic_conc(h: pd.Series, w: pd.Series, rango: pd.Series) -> dict:
-    """C por regresión conveniente con errores robustos (vce(robust)); W y E."""
+    """C por regresión conveniente con errores robustos; W y E."""
     fin = np.isfinite(h) & np.isfinite(w) & np.isfinite(rango)
     h, w, rango = h[fin].to_numpy(float), w[fin].to_numpy(float), rango[fin].to_numpy(float)
     o = np.argsort(rango, kind="stable")
@@ -229,7 +222,7 @@ def ic_percentil(b: np.ndarray) -> dict:
     """IC 95 % percentil de las réplicas bootstrap y su valor p bilateral
     (el doble de la menor proporción de réplicas a un lado de cero).
 
-    No se usa el IC normal (estimación ± 1,96·EE, el del bootstrap de Stata)
+    No se usa el IC normal (estimación ± 1,96·EE, el intervalo normal)
     porque las réplicas no siguen una normal: son bimodales, según salga o
     no Bogotá en la muestra."""
     lado = min((b <= 0).sum(), (b >= 0).sum())
@@ -387,7 +380,7 @@ def orden_dptos(trienios: pd.DataFrame) -> pd.DataFrame:
 # D. Curvas de concentración (trienios; 3 muestras)
 # --------------------------------------------------------------------------- #
 def curva(trienios: pd.DataFrame, muestra: int, periodo: int) -> pd.DataFrame:
-    """muestra (numeración del do-file, no la de `variantes`):
+    """muestra (numeración del análisis, no la de `variantes`):
     1 = principal, 2 = sin Bogotá, 3 = estandarizada."""
     t = trienios[trienios["periodo"] == periodo].sort_values("ses_nc")
     if muestra == 2:

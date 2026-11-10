@@ -2,7 +2,6 @@
 # =============================================================================
 #  TRABAJO FINAL - BAJO PESO AL NACER EN COLOMBIA 2005-2024
 #  Python: obj2_desigualdades.py
-#  (equivale a 02_Objetivo2_Desigualdades_RT_DT.do, v2)
 #
 #  Objetivo 2: desigualdades departamentales en el BPN mediante razones y
 #  diferencias de prevalencias (RP/DP) frente a una referencia elegible
@@ -68,7 +67,7 @@ def rt_dt_quinquenio(d: pd.DataFrame) -> pd.DataFrame:
     d["mu"] = g["bpn_n"].transform("sum") / g["con_peso"].transform("sum") * 100
     d["es_ref"] = (d["elegible"] & d["pct"].eq(d["ref"])).astype(int)
     # Nombre del dpto de referencia: el de mayor código entre los empatados
-    # (replica el bysort quinq (es_ref) + [_N] del do-file)
+    # Ordena los departamentos dentro de cada quinquenio por condición de referencia.
     dref = (d[d["es_ref"].eq(1)].sort_values("dpto_res")
             .groupby("quinq")["departamento"].last())
     d["dpto_ref"] = d["quinq"].map(dref)
@@ -107,7 +106,7 @@ def rt_dt_anual(d: pd.DataFrame) -> pd.DataFrame:
 
 
 # --------------------------------------------------------------------------- #
-# C. Medidas resumen por periodo (programa resumen_desig del do-file)
+# C. Medidas resumen por periodo (programa resumen_desig del análisis)
 # --------------------------------------------------------------------------- #
 def resumen_desig(d: pd.DataFrame, periodo: str, tipo: str) -> dict:
     """Medidas de desigualdad de un periodo: mu, referencia elegible, PAR/PAF,
@@ -132,7 +131,7 @@ def resumen_desig(d: pd.DataFrame, periodo: str, tipo: str) -> dict:
         rt_el = dt_el = np.nan
     else:
         nref = (eleg[eleg["pct"].eq(ref)].sort_values("dpto_res")
-                ["departamento"].iloc[-1])      # replica el bysort quinq (es_ref)
+                ["departamento"].iloc[-1])      # último departamento del quinquenio
         rt_el = pmax / ref
         dt_el = pmax - ref
     return {"periodo": periodo, "tipo": tipo, "mu": mu, "ref": ref,

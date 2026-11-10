@@ -1,10 +1,10 @@
 # -*- coding: utf-8 -*-
 # =============================================================================
 #  TRABAJO FINAL - BAJO PESO AL NACER EN COLOMBIA 2005-2024
-#  Python: obj1_evolucion.py   (equivale a 01_Base_y_Objetivo1.do, v2)
+#  Python: obj1_evolucion.py
 #
 #  Parte A/B (base y variables armonizadas) la hace comun_bpn.cargar_celdas.
-#  Aquí va la Parte C del do-file: Objetivo 1 - evolución y distribución del
+#  Aquí va la Objetivo 1: Objetivo 1 - evolución y distribución del
 #  BPN: prevalencia nacional (cruda y estandarizada por edad), APC (Poisson
 #  robusto), prevalencia por departamento, calidad del registro del peso,
 #  por sexo y distribución del peso, con IC 95 % de Wilson. Salidas:
@@ -16,7 +16,7 @@ import pandas as pd
 import comun_bpn as cb
 
 EXCEL = "Objetivo1_Evolucion_BPN.xlsx"
-# Etiquetas del peso_reparto de dane-data (loader._PESOS) -> grupos del do-file
+# Etiquetas del peso_reparto de dane-data (loader._PESOS) -> grupos de análisis
 _MAP_PESO = {"Menos de 1.000": 1, "1.000 a 1.499": 2, "1.500 a 1.999": 3,
              "2.000 a 2.499": 4, "2.500 a 2.999": 5, "3.000 a 3.499": 6,
              "3.500 a 3.999": 7, "4.000 y más": 8}
@@ -157,7 +157,7 @@ def distribucion_peso() -> pd.DataFrame:
     anios = list(range(cb.ANIO_INI, cb.ANIO_FIN + 1))
     d = cb.conteos(["peso_grupo"], anios)
     d["g"] = d["peso_grupo"].map(_MAP_PESO)
-    d = d[d["g"].notna()]                     # sin peso no conocido (igual do-file)
+    d = d[d["g"].notna()]                     # sin peso no conocido (se excluyen)
     total = d.groupby("anio")["n"].sum()
     d = (d.assign(n=d["n"] * 100 / d["anio"].map(total))
          .pivot(index="anio", columns="g", values="n")

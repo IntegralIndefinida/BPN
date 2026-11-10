@@ -1,10 +1,8 @@
-# Bajo peso al nacer en Colombia 2005-2024 — traducción a Python (v2)
+# Bajo peso al nacer en Colombia 2005-2024 — análisis en Python
 
-Traducción a Python de los 4 do-files de Stata de la carpeta `Code/stata/v2`
-(análisis de bajo peso al nacer, BPN, con microdatos de nacimientos de las
-Estadísticas Vitales del DANE). Los scripts espejan la estructura de los
-do-files y producen las mismas salidas (xlsx por objetivo, gráficos G1–G14 y
-logs), leyendo los datos con la librería `dane-data`.
+Análisis de bajo peso al nacer (BPN) con microdatos de nacimientos de las
+Estadísticas Vitales del DANE. Los scripts producen las salidas del análisis
+(xlsx por objetivo, gráficos G1–G14 y logs), leyendo los datos con `dane-data`.
 
 ## Requisitos
 
@@ -41,15 +39,15 @@ Ningún módulo escribe archivos por su cuenta: eso lo hace `correr.py`.
 
 ## Scripts
 
-| Script | Equivalente Stata | Contenido |
+| Script | Contenido |
 |---|---|---|
-| `correr.py` | — | corre los objetivos y guarda log, xlsx y png |
-| `sintesis.ipynb` | — | síntesis del análisis: recalcula y muestra tablas y gráficos |
-| `comun_bpn.py` | Parte A/B de `01_Base_y_Objetivo1.do` | rutas, etiquetas, carga con `dd.eevv`, celdas de conteos, imputación de altitud, caché, helpers (Wilson, APC Poisson, Excel, gráficos, log) |
-| `obj1_evolucion.py` | `01_Base_y_Objetivo1.do` C | prevalencia nacional (cruda y estandarizada), APC, departamentos, calidad del registro del peso, sexo, distribución del peso, G1 y G12–G14 (mapa de calor por departamento, % BPN por sexo, distribución del peso) |
-| `obj2_desigualdades.py` | `02_Objetivo2_Desigualdades_RT_DT.do` | RP/DP por quinquenio y año frente a la referencia elegible, Theil/MLD, PAR/PAF, extremos, G7/G8 |
-| `obj3_educacion.py` | `03_Objetivo3_Educacion_Regimen.do` | prevalencias por educación y régimen, Poisson M0–M5 con errores cluster dpto, RII/SII, G9/G10 |
-| `obj4_concentracion.py` | `04_Objetivo4_Indice_Concentracion.do` | estandarización indirecta por altitud y edad, índices C/W/E por regresión conveniente (Kakwani), 10 variantes, bootstrap por departamento, trienios 2008-2010 vs 2022-2024 con bootstrap pareado, curvas G3–G6/G11, G2 |
+| `correr.py` | corre los objetivos y guarda log, xlsx y png |
+| `sintesis.ipynb` | síntesis del análisis: recalcula y muestra tablas y gráficos |
+| `comun_bpn.py` | rutas, etiquetas, carga con `dd.eevv`, celdas de conteos, imputación de altitud, caché, helpers (Wilson, APC Poisson, Excel, gráficos, log) |
+| `obj1_evolucion.py` | prevalencia nacional (cruda y estandarizada), APC, departamentos, calidad del registro del peso, sexo, distribución del peso, G1 y G12–G14 |
+| `obj2_desigualdades.py` | RP/DP por quinquenio y año frente a la referencia elegible, Theil/MLD, PAR/PAF, extremos, G7/G8 |
+| `obj3_educacion.py` | prevalencias por educación y régimen, Poisson M0–M5 con errores cluster dpto, RII/SII, G9/G10 |
+| `obj4_concentracion.py` | estandarización indirecta por altitud y edad, índices C/W/E por regresión conveniente (Kakwani), 10 variantes, bootstrap por departamento, trienios 2008-2010 vs 2022-2024 con bootstrap pareado, curvas G3–G6/G11, G2 |
 
 ## Datos y caché
 
@@ -58,7 +56,7 @@ Ningún módulo escribe archivos por su cuenta: eso lo hace `correr.py`.
 - Todo se trabaja sobre **celdas** por (anio, dpto_res, cod_mpio, educ4,
   regimen, edad6) con altitud del municipio: los conteos (nacidos, con peso,
   BPN, BPN a término, régimen, educación) replican exactamente las
-  regresiones con datos individuales (nota técnica del do-file 03) y
+  regresiones con datos individuales (nota técnica del objetivo 3) y
   aceleran los Poisson ~10 millones de registros.
 - La caché de celdas está en `3.0 Datos/python_v2/procesados/celdas/`
   (un parquet + un JSON por año). La huella incluye el stat del archivo del
@@ -66,8 +64,7 @@ Ningún módulo escribe archivos por su cuenta: eso lo hace `correr.py`.
   el módulo, se recalculan todas las celdas. El registro de cargas queda en
   `procesados/control_carga.csv`. Con `refrescar=True` se fuerza el recálculo.
 - La imputación de altitud (media del departamento ponderada por nacimientos)
-  se hace sobre la serie completa, como el `bysort dpto_res: egen mean` del
-  do-file, después de unir los años.
+  se hace sobre la serie completa, después de unir los años.
 
 ## Salidas
 
@@ -79,28 +76,23 @@ Ningún módulo escribe archivos por su cuenta: eso lo hace `correr.py`.
 - `G1`…`G14` (PNG, 300 dpi) y `log_01…log_04` (log de cada corrida,
   mismo contenido que la consola).
 
-## Notas de replicación
+## Notas metodológicas
 
-- Las semillas del bootstrap replican las del do-file (anual `20241+anio+100·v`,
-  trienios `20241+1000·v+p`, diferencias `20241+5000+v`), pero los replicados
-  no coinciden numéricamente con Stata: el generador de números aleatorios es
-  distinto (NumPy PCG64). Con las mismas semillas los resultados son
+- Las semillas del bootstrap (anual `20241+anio+100·v`, trienios
+  `20241+1000·v+p`, diferencias `20241+5000+v`) hacen que los resultados sean
   reproducibles entre corridas de Python.
-- La estandarización indirecta por altitud y edad del objetivo 4 **no replica
-  el do-file**. El do-file usa la tasa del grupo (año, altitud, edad) incluido
-  el propio departamento; como Bogotá es ~2/3 de los nacidos a ≥2.500 m,
-  quedaba comparada consigo misma. Python usa un Poisson con altitud, edad,
+- La estandarización indirecta por altitud y edad del objetivo 4 usa un Poisson
+  con altitud, edad,
   año y efectos fijos de departamento (O'Donnell et al. 2008, cap. 5) y predice
   los casos esperados solo con altitud y edad. Los coeficientes van en la hoja
   `Efecto_altitud_edad`.
 - Los intervalos de confianza y los valores p del bootstrap (objetivo 4) son
-  **percentil**, no el normal del `bootstrap` de Stata que usa el do-file: las
-  réplicas son bimodales (C ≈ 0,03 cuando Bogotá no sale en la muestra y
+  **percentil**: las réplicas son bimodales (C ≈ 0,03 cuando Bogotá no sale en la muestra y
   0,08–0,12 cuando sale), así que estimación ± 1,96·EE no las describe.
 - El régimen de afiliación solo es comparable desde 2008 (objetivos 3 y 4).
 - La validación del ordenamiento contra NBI/IPM (hoja `Validacion_proxy`) se
   omite con un aviso si no existe la plantilla
   `3.0 Datos/nbi_ipm_departamentos.csv`.
-- La variante anual "Sin Bogotá" no tiene bootstrap en el gráfico G2 (así lo
-  hace el do-file); el bootstrap completo está en los trienios y la
+- La variante anual "Sin Bogotá" no tiene bootstrap en el gráfico G2; el
+  bootstrap completo está en los trienios y la
   diferencia pareada.

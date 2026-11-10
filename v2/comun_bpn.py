@@ -5,14 +5,14 @@
 #
 #  comun_bpn.py  (módulo común de los 4 scripts de Python)
 #
-#  - Rutas y constantes (equivalen a los globals del 01_Base_y_Objetivo1.do).
-#  - Etiquetas de las variables armonizadas (equivalen a los label define).
+#  - Rutas y constantes del proyecto.
+#  - Etiquetas de las variables armonizadas.
 #  - Lectura de los microdatos con dane-data y agregación a "celdas" por
 #    (anio, dpto_res, cod_mpio, educ4, regimen, edad6) con las cuentas
 #    (nacidos, con peso, BPN, BPN a término, régimen, educación, altitud).
 #    Los 4 objetivos se calculan a partir de estas celdas.
 #  - Altitud por municipio: merge con el CSV e imputación con la media del
-#    departamento ponderada por nacimientos (igual que el do-file).
+#    departamento ponderada por nacimientos.
 #  - Caché en parquet por año para no releer los archivos del DANE.
 # =============================================================================
 
@@ -41,7 +41,7 @@ ALTITUD_CSV = DATOS / "altitud_municipios.csv"    # insumo de altitud
 ANIO_INI, ANIO_FIN = 2005, 2024
 
 # --------------------------------------------------------------------------- #
-# 1. ETIQUETAS (label define del do-file)
+# 1. ETIQUETAS
 # --------------------------------------------------------------------------- #
 # Departamento de residencia (DIVIPOLA); 0 = sin información / exterior.
 # Los códigos válidos son los 33 de dane_data.referencias.DEPARTAMENTOS
@@ -75,7 +75,7 @@ REGIMEN_ETQ = {1: "Contributivo, excepción o especial", 2: "Subsidiado",
                3: "No asegurado", 9: "Sin información"}
 
 # --------------------------------------------------------------------------- #
-# 2. LOG: imita el log del do-file (consola + archivo en SALIDAS)
+# 2. LOG: imita el log del análisis (consola + archivo en SALIDAS)
 # --------------------------------------------------------------------------- #
 class _Tee:
     """Reenvía lo que se imprime a la consola y a un archivo de log."""
@@ -118,13 +118,13 @@ class log_salida:
 
 
 # --------------------------------------------------------------------------- #
-# 3. ARMONIZACIÓN DE UN AÑO -> celdas (Parte A/B del 01 do-file, por año)
+# 3. ARMONIZACIÓN DE UN AÑO -> celdas (Parte A/B del 01 análisis, por año)
 # --------------------------------------------------------------------------- #
 def _peso_grupo(peso: pd.Series) -> pd.Series:
     """PESO_NAC -> grupos 1..8 (el DANE lo publica en grupos en 2005-2024).
 
-    Si algún año trajera gramos, se reparte con los cortes del do-file
-    (irecode 999, 1499, ...) en el rango 200-7.000 g.
+    Si algún año trajera gramos, se reparte con los cortes 999, 1499, ...,
+    en el rango 200-7.000 g.
     """
     if peso.max() > 100:                                   # rama 'gramos'
         return pd.cut(peso, [199, 999, 1499, 1999, 2499, 2999, 3499, 3999, 7000],
@@ -155,8 +155,7 @@ def _armonizar(anio: int) -> pd.DataFrame:
 
     Celdas por (anio, dpto_res, cod_mpio, educ4, regimen, edad6); la altitud
     del CSV va por municipio, y su imputación se resuelve después, sobre la
-    serie completa, para replicar el 'by dpto_res: egen mean(altitud_m)' del
-    do-file (media ponderada por nacimientos).
+    serie completa, usando la media ponderada por nacimientos.
     """
     d = dd.eevv.load(anio, tipo="nacimientos", columns=["PESO_NAC"])
 
@@ -180,7 +179,7 @@ def _armonizar(anio: int) -> pd.DataFrame:
         regimen = pd.Series(pd.NA, index=d.index, dtype="Int8")
 
     # Departamento: dane-data trae el CODPTORE crudo en dpto_residencia;
-    # los códigos fuera de la tabla (1-4, 75) van a 0 como en el do-file.
+    # los códigos fuera de la tabla (1-4, 75) van a 0 como en el análisis.
     bruto = d["dpto_residencia"].fillna(0).astype("int8").to_numpy()
     dpto = pd.Series(np.where(np.isin(bruto, DPTOS_VALIDOS), bruto, 0),
                      index=d.index)
@@ -218,12 +217,8 @@ def _armonizar(anio: int) -> pd.DataFrame:
 def _imputar_altitud(celdas: pd.DataFrame) -> pd.DataFrame:
     """Imputa la altitud con la media del departamento (pooled 2005-2024).
 
-    Replica del do-file:
-        alt_imputada = missing(altitud_m) & dpto_res > 0
-        bysort dpto_res: egen _alt_dpto = mean(altitud_m)  (por nacimientos)
-        replace altitud_m = _alt_dpto if alt_imputada
-        replace altitud_m = . if dpto_res == 0
-        alt_cat = min(1 + floor(altitud_m/500), 6)
+    Imputa los faltantes con la media departamental y crea categorías de
+    altitud de 500 metros, con la última categoría abierta.
     La media del dpto pondera por nacimientos: Σ n·alt / Σ n entre las celdas
     del dpto con altitud conocida, sobre toda la serie.
     """
@@ -306,7 +301,7 @@ def cargar_celdas(anios=None, refrescar: bool = False) -> pd.DataFrame:
 
     celdas = pd.concat(partes, ignore_index=True)
     # La imputación de altitud depende de TODOS los años a la vez (como el
-    # do-file, que apila primero la base completa): se resuelve aquí.
+    # análisis, que apila primero la base completa): se resuelve aquí.
     return _imputar_altitud(celdas)
 
 
@@ -319,10 +314,10 @@ def conteos(por, anios=None, dropna: bool = True) -> pd.DataFrame:
 
 
 # --------------------------------------------------------------------------- #
-# 5. ESTADÍSTICA COMÚN (programas wilson y apc_glm del 01 do-file)
+# 5. ESTADÍSTICA COMÚN
 # --------------------------------------------------------------------------- #
 def wilson(casos, n, alpha: float = 0.05):
-    """IC de Wilson de una proporción (li, ls) en porcentaje, como el do-file."""
+    """IC de Wilson de una proporción (li, ls) en porcentaje, como el análisis."""
     from statsmodels.stats.proportion import proportion_confint
     li, ls = proportion_confint(casos, n, alpha=alpha, method="wilson")
     return np.asarray(li) * 100, np.asarray(ls) * 100
@@ -346,8 +341,7 @@ def estandarizar_edad(d: pd.DataFrame, por: list[str], pesos: pd.Series,
 
 def apc_poisson(df: pd.DataFrame, ini: int = ANIO_INI, fin: int = ANIO_FIN) -> dict:
     """Cambio porcentual anual (APC): Poisson con offset log(con_peso) y errores
-    robustos (equivale a `glm bpn_n anio, family(poisson) exposure(con_peso)
-    vce(robust)` del do-file). Requiere columnas anio, bpn_n y con_peso.
+    robustos. Requiere columnas anio, bpn_n y con_peso.
     """
     import math
     from scipy.stats import norm
@@ -357,8 +351,8 @@ def apc_poisson(df: pd.DataFrame, ini: int = ANIO_INI, fin: int = ANIO_FIN) -> d
     res = sm.GLM(d["bpn_n"].to_numpy(float), X, family=sm.families.Poisson(),
                  offset=np.log(d["con_peso"].to_numpy(float))
                  ).fit(cov_type="HC0")
-    # Stata (glm, vce(robust)) multiplica la varianza por n/(n-1); el HC1 de
-    # statsmodels en GLM no aplica ninguna corrección.
+    # La corrección HC1 multiplica la varianza por n/(n-1); statsmodels no la
+    # aplica automáticamente en GLM.
     b = float(res.params[1])
     se = float(res.bse[1]) * math.sqrt(len(d) / (len(d) - 1))
     return {"apc": 100 * (math.exp(b) - 1),

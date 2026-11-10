@@ -2,7 +2,6 @@
 # =============================================================================
 #  TRABAJO FINAL - BAJO PESO AL NACER EN COLOMBIA 2005-2024
 #  Python: obj3_educacion.py
-#  (equivale a 03_Objetivo3_Educacion_Regimen.do, v2)
 #
 #  Objetivo 3: relación entre el nivel educativo de la madre / régimen de
 #  afiliación (proxy socioeconómico, 2008-2024) y la prevalencia de BPN.
@@ -11,7 +10,7 @@
 #      estándar agrupados por departamento: modelos M0 a M5.
 #   C. Índice relativo (RII) y de la pendiente (SII) por educación con ridit.
 #  No se ajusta por gestación, controles prenatales ni tipo de parto
-#  (mediadores, ver nota técnica del do-file).
+#  (mediadores, ver nota técnica del análisis).
 #  Salidas: Objetivo3_Educacion_Regimen_BPN.xlsx, G9, G10 y log.
 # =============================================================================
 import numpy as np
@@ -92,7 +91,7 @@ def _dummies(df: pd.DataFrame, col: str, ref: int) -> pd.DataFrame:
 
 
 def _ajustar(df: pd.DataFrame, y: str, X: pd.DataFrame, expo: str):
-    """GLM Poisson exposición log; EE agrupados por dpto (como vce(cluster)).
+    """GLM Poisson con exposición log; errores agrupados por departamento.
     Devuelve (coeficientes, errores estándar, N celdas, #dptos)."""
     X = sm.add_constant(X.reindex(df.index).astype(float), has_constant="add")
     res = sm.GLM(df[y].astype(float), X, family=sm.families.Poisson(),
@@ -104,7 +103,7 @@ def _ajustar(df: pd.DataFrame, y: str, X: pd.DataFrame, expo: str):
 
 def _filas(modelo: str, b: dict, se: dict, etqs: dict, var: str, niveles,
            N: float, G: int) -> list[dict]:
-    """guardar_rp del do-file: exp(b), IC y p para los niveles pedidos."""
+    """guardar_rp del análisis: exp(b), IC y p para los niveles pedidos."""
     fuera = []
     for nivel in niveles:
         nombre = f"{var}_{nivel}"
