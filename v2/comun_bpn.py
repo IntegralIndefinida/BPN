@@ -341,6 +341,22 @@ def wilson(casos, n, alpha: float = 0.05):
     return np.asarray(li) * 100, np.asarray(ls) * 100
 
 
+def estandarizar_edad(d: pd.DataFrame, por: list[str], pesos: pd.Series,
+                      n: str = "n", casos: str = "casos") -> pd.DataFrame:
+    """Estandarización directa por edad6 (objetivos 1 y 3).
+
+    `pesos`: w_edad de la población estándar, indexado por edad6.
+    Devuelve, por las columnas `por`: n, casos, comp (prevalencia
+    estandarizada, en proporción) y v (su varianza binomial)."""
+    ae = (d.groupby([*por, "edad6"], observed=True, as_index=False)
+          .agg(n=(n, "sum"), casos=(casos, "sum")))
+    w = ae["edad6"].map(pesos)
+    p = ae["casos"] / ae["n"]
+    return (ae.assign(comp=w * p, v=w ** 2 * p * (1 - p) / ae["n"])
+            .groupby(por, observed=True, as_index=False)[["n", "casos", "comp", "v"]]
+            .sum())
+
+
 def apc_poisson(df: pd.DataFrame, ini: int = ANIO_INI, fin: int = ANIO_FIN) -> dict:
     """Cambio porcentual anual (APC): Poisson con offset log(con_peso) y errores
     robustos (equivale a `glm bpn_n anio, family(poisson) exposure(con_peso)

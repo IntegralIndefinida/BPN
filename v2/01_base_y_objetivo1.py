@@ -47,20 +47,13 @@ def nacional_anio(celdas: pd.DataFrame) -> pd.DataFrame:
 # --------------------------------------------------------------------------- #
 def nacional_estandarizada(celdas: pd.DataFrame) -> pd.DataFrame:
     base = celdas[celdas["edad6"].notna() & celdas["con_peso"].gt(0)]
-    ae = (base.groupby(["anio", "edad6"], observed=True)
-          .agg(n=("con_peso", "sum"), casos=("bpn_n", "sum")).reset_index())
-    n_total = ae["n"].sum()
-    w_edad = ae.groupby("edad6")["n"].sum() / n_total
-    p = ae["casos"] / ae["n"]
-    ae = ae.assign(w_edad=ae["edad6"].map(w_edad), p_edad=p)
-    ae["comp"] = ae["w_edad"] * ae["p_edad"]
-    ae["v_comp"] = ae["w_edad"] ** 2 * ae["p_edad"] * (1 - ae["p_edad"]) / ae["n"]
-    d = ae.groupby("anio").agg(n=("n", "sum"), casos=("casos", "sum"),
-                               comp=("comp", "sum"), v_comp=("v_comp", "sum")).reset_index()
+    pesos = base.groupby("edad6", observed=True)["con_peso"].sum()
+    pesos /= pesos.sum()
+    d = cb.estandarizar_edad(base, ["anio"], pesos, n="con_peso", casos="bpn_n")
     d["pct_cruda"] = 100 * d["casos"] / d["n"]
     d["pct_estand"] = 100 * d["comp"]
-    d["li_estand"] = 100 * (d["comp"] - 1.96 * np.sqrt(d["v_comp"]))
-    d["ls_estand"] = 100 * (d["comp"] + 1.96 * np.sqrt(d["v_comp"]))
+    d["li_estand"] = 100 * (d["comp"] - 1.96 * np.sqrt(d["v"]))
+    d["ls_estand"] = 100 * (d["comp"] + 1.96 * np.sqrt(d["v"]))
     return d[["anio", "n", "casos", "pct_cruda", "pct_estand",
               "li_estand", "ls_estand"]]
 

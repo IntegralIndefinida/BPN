@@ -45,33 +45,26 @@ def celdas_obj3() -> pd.DataFrame:
                  n_term=("n_term", "sum"), casos_term=("bpn_term_n", "sum")))
 
 
-def poblacion_estandar(celdas: pd.DataFrame) -> pd.DataFrame:
-    """Población estándar: todos los nacidos con peso y edad conocidos 2005-2024."""
-    d = celdas.groupby("edad6", observed=True, as_index=False)["n"].sum()
-    d["w_edad"] = d["n"] / d["n"].sum()
-    return d[["edad6", "w_edad"]]
+def poblacion_estandar(celdas: pd.DataFrame) -> pd.Series:
+    """Población estándar (w_edad por edad6): todos los nacidos con peso y
+    edad conocidos 2005-2024."""
+    n = celdas.groupby("edad6", observed=True)["n"].sum()
+    return n / n.sum()
 
 
 # --------------------------------------------------------------------------- #
 # A. Prevalencia cruda y estandarizada por edad
 # --------------------------------------------------------------------------- #
-def prevalencias(celdas: pd.DataFrame, pesos: pd.DataFrame) -> pd.DataFrame:
+def prevalencias(celdas: pd.DataFrame, pesos: pd.Series) -> pd.DataFrame:
     filas = []
     for var, etqs, grupo, periodos in [
             ("educ4", cb.EDUC4_ETQ, "Nivel educativo", [(2005, 2024), (2008, 2024)]),
             ("regimen", cb.REGIMEN_ETQ, "Régimen", [(2008, 2024)])]:
         for a0, a1 in periodos:
             d = celdas[celdas[var].ne(9) & celdas["anio"].between(a0, a1)]
-            ae = (d.groupby([var, "edad6"], observed=True, as_index=False)
-                  .agg(n=("n", "sum"), casos=("casos", "sum")).merge(pesos, on="edad6"))
-            p = ae["casos"] / ae["n"]
-            agg = (ae.assign(comp=ae["w_edad"] * p,
-                             v=ae["w_edad"] ** 2 * p * (1 - p) / ae["n"])
-                   .groupby(var, observed=True)
-                   .agg(n=("n", "sum"), casos=("casos", "sum"),
-                        comp=("comp", "sum"), v=("v", "sum")))
-            for k, f in agg.iterrows():
-                filas.append({"grupo": grupo, "categoria": etqs[k],
+            agg = cb.estandarizar_edad(d, [var], pesos)
+            for _, f in agg.iterrows():
+                filas.append({"grupo": grupo, "categoria": etqs[int(f[var])],
                               "periodo": f"{a0}-{a1}", "n": f.n, "casos": f.casos,
                               "pct_cruda": 100 * f.casos / f.n,
                               "pct_estand": 100 * f.comp,
@@ -80,16 +73,13 @@ def prevalencias(celdas: pd.DataFrame, pesos: pd.DataFrame) -> pd.DataFrame:
     return pd.DataFrame(filas)
 
 
-def estandarizada_anio(celdas: pd.DataFrame, pesos: pd.DataFrame, var: str,
+def estandarizada_anio(celdas: pd.DataFrame, pesos: pd.Series, var: str,
                        desde: int) -> pd.DataFrame:
     """Prevalencia estandarizada por año según educ4 o regimen (para G9/G10)."""
     d = celdas[celdas[var].ne(9) & celdas["anio"].ge(desde)]
-    ae = (d.groupby(["anio", var, "edad6"], observed=True, as_index=False)
-          .agg(n=("n", "sum"), casos=("casos", "sum")).merge(pesos, on="edad6"))
-    ae["comp"] = ae["w_edad"] * ae["casos"] / ae["n"]
-    agg = ae.groupby(["anio", var], observed=True, as_index=False)[["comp", "n"]].sum()
+    agg = cb.estandarizar_edad(d, ["anio", var], pesos)
     agg["pct_estand"] = 100 * agg["comp"]
-    return agg.drop(columns="comp")
+    return agg[["anio", var, "n", "pct_estand"]]
 
 
 # --------------------------------------------------------------------------- #
