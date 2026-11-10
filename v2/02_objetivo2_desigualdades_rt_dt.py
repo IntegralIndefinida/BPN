@@ -43,14 +43,25 @@ def _prevalencias(d: pd.DataFrame) -> pd.DataFrame:
     return d
 
 
+def _con_elegible(d: pd.DataFrame, minimo: int) -> pd.DataFrame:
+    """Prevalencias + elegibilidad como referencia: >= `minimo` nacidos con
+    peso y <= MAX_FALT % sin información de peso."""
+    d = _prevalencias(d)
+    d["elegible"] = (d["con_peso"] >= minimo) & (d["pct_falt"] <= MAX_FALT)
+    return d
+
+
+def _quinquenios(panel: pd.DataFrame) -> pd.DataFrame:
+    return _con_elegible(panel.groupby(["dpto_res", "departamento", "quinq"],
+                                       as_index=False)[["nacidos", "con_peso", "bpn_n"]]
+                         .sum(), MIN_QUINQ)
+
+
 # --------------------------------------------------------------------------- #
 # B. Quinquenios: RP/DP frente a la referencia y a la prevalencia de las 33
 # --------------------------------------------------------------------------- #
 def rt_dt_quinquenio(d: pd.DataFrame) -> pd.DataFrame:
-    d = _prevalencias(d.groupby(["dpto_res", "departamento", "quinq"],
-                                as_index=False)[["nacidos", "con_peso", "bpn_n"]]
-                      .sum())
-    d["elegible"] = (d["con_peso"] >= MIN_QUINQ) & (d["pct_falt"] <= MAX_FALT)
+    d = _quinquenios(d)
     d["li"], d["ls"] = cb.wilson(d["bpn_n"], d["con_peso"])
     g = d.groupby("quinq")
     d["ref"] = d["pct"].where(d["elegible"]).groupby(d["quinq"]).transform("min")
@@ -85,9 +96,7 @@ def rt_dt_ancho(quinq: pd.DataFrame) -> pd.DataFrame:
 
 
 def rt_dt_anual(d: pd.DataFrame) -> pd.DataFrame:
-    d = _prevalencias(d)
-    d["elegible"] = (d["con_peso"] >= MIN_ANUAL) & (d["pct_falt"] <= MAX_FALT)
-    g = d.groupby("anio")
+    d = _con_elegible(d, MIN_ANUAL)
     d["ref"] = d["pct"].where(d["elegible"]).groupby(d["anio"]).transform("min")
     d["rt"] = d["pct"] / d["ref"]
     d["dt"] = d["pct"] - d["ref"]
@@ -136,19 +145,11 @@ def resumen_desig(d: pd.DataFrame, periodo: str, tipo: str) -> dict:
 
 def medidas_resumen(panel: pd.DataFrame) -> pd.DataFrame:
     filas = []
-    panel = _prevalencias(panel)
+    quinq = _quinquenios(panel)
     for q, etq in QUINQ_ETQ.items():
-        d_quinq = (panel[panel["quinq"] == q]
-                   .groupby(["dpto_res", "departamento"], as_index=False)
-                   [["nacidos", "con_peso", "bpn_n"]].sum())
-        d_quinq = _prevalencias(d_quinq)
-        d_quinq["elegible"] = ((d_quinq["con_peso"] >= MIN_QUINQ)
-                               & (d_quinq["pct_falt"] <= MAX_FALT))
-        filas.append(resumen_desig(d_quinq, etq, "Quinquenio"))
+        filas.append(resumen_desig(quinq[quinq["quinq"] == q], etq, "Quinquenio"))
     for anio in range(cb.ANIO_INI, cb.ANIO_FIN + 1):
-        d_anio = _prevalencias(panel[panel["anio"] == anio])
-        d_anio["elegible"] = ((d_anio["con_peso"] >= MIN_ANUAL)
-                              & (d_anio["pct_falt"] <= MAX_FALT))
+        d_anio = _con_elegible(panel[panel["anio"] == anio], MIN_ANUAL)
         filas.append(resumen_desig(d_anio, str(anio), "Año"))
     return pd.DataFrame(filas)[
         ["periodo", "tipo", "mu", "ref", "dpto_ref", "par", "paf", "exceso",
