@@ -7,8 +7,11 @@
 #  afiliación (proxy socioeconómico, 2008-2024) y la prevalencia de BPN.
 #   A. Prevalencia cruda y estandarizada por edad de la madre (directa).
 #   B. Razones de prevalencia con Poisson (registro logarítmico) y errores
-#      estándar agrupados por departamento: modelos M0 a M5.
-#   C. Índice relativo (RII) y de la pendiente (SII) por educación con ridit.
+#      estándar agrupados por departamento: modelos M0 a M5. El principal es
+#      M4 (edad, año, altitud y efectos fijos de departamento); M5 repite ese
+#      ajuste con el BPN a término en partos únicos (resultado secundario).
+#   C. Índice relativo (RII) y de la pendiente (SII) por educación con ridit,
+#      con el ajuste de M4, para los dos resultados y por quinquenio.
 #  No se ajusta por gestación, controles prenatales ni tipo de parto
 #  (mediadores, ver nota técnica del análisis).
 #  Salidas: Objetivo3_Educacion_Regimen_BPN.xlsx, G9, G10 y log.
@@ -146,7 +149,7 @@ def razones_prevalencia(celdas: pd.DataFrame) -> pd.DataFrame:
     filas += _filas("M2 Régimen + edad + año", b, se, cb.REGIMEN_ETQ, "regimen",
                      [2, 3], N, G)
 
-    # M3. Educación y régimen juntos, ajustados por edad y año [principal]
+    # M3. Educación y régimen juntos, ajustados por edad y año
     dm = d8[(d8["educ4"] != 9) & (d8["regimen"] != 9)]
     X3 = pd.concat([_dummies(dm, "educ4", 4), _dummies(dm, "regimen", 1),
                     _dummies(dm, "edad6", 2), _dummies(dm, "anio", 2008)], axis=1)
@@ -158,7 +161,9 @@ def razones_prevalencia(celdas: pd.DataFrame) -> pd.DataFrame:
     filas += _filas("M3 Educación + régimen + edad + año", b, se, cb.EDAD6_ETQ,
                      "edad6", [1, 3, 4, 5, 6], N, G)
 
-    # M4. M3 + altitud del municipio + efectos fijos de departamento
+    # M4. M3 + altitud del municipio + efectos fijos de departamento [principal]
+    # Sin altitud ni departamento, el gradiente educativo sale confundido: las
+    # madres más educadas viven más en Bogotá y el altiplano, donde hay más BPN.
     da = dm[dm["alt_cat"] != 9]
     X4 = pd.concat([_dummies(da, "educ4", 4), _dummies(da, "regimen", 1),
                     _dummies(da, "edad6", 2), _dummies(da, "anio", 2008),
@@ -169,14 +174,13 @@ def razones_prevalencia(celdas: pd.DataFrame) -> pd.DataFrame:
     filas += _filas("M4 M3 + altitud + EF departamento", b, se, cb.REGIMEN_ETQ,
                      "regimen", [2, 3], N, G)
 
-    # M5. M3 con BPN a término en partos únicos (proxy de restricción del crecimiento)
-    dt = dm[dm["n_term"] > 0]
-    X5 = pd.concat([_dummies(dt, "educ4", 4), _dummies(dt, "regimen", 1),
-                    _dummies(dt, "edad6", 2), _dummies(dt, "anio", 2008)], axis=1)
-    b, se, N, G = _ajustar(dt, "casos_term", X5, "n_term")
-    filas += _filas("M5 M3 con BPN a término (únicos >=38 sem.)", b, se,
+    # M5. M4 con BPN a término en partos únicos (proxy de restricción del
+    # crecimiento): mismo ajuste que el principal, resultado secundario
+    dt = da[da["n_term"] > 0]
+    b, se, N, G = _ajustar(dt, "casos_term", X4, "n_term")
+    filas += _filas("M5 M4 con BPN a término (únicos >=38 sem.)", b, se,
                      cb.EDUC4_ETQ, "educ4", [1, 2, 3], N, G)
-    filas += _filas("M5 M3 con BPN a término (únicos >=38 sem.)", b, se,
+    filas += _filas("M5 M4 con BPN a término (únicos >=38 sem.)", b, se,
                      cb.REGIMEN_ETQ, "regimen", [2, 3], N, G)
 
     return pd.DataFrame(filas)
@@ -194,24 +198,34 @@ def ridit_educacion(celdas: pd.DataFrame) -> pd.DataFrame:
     return tot[["anio", "educ4", "ridit"]]
 
 
-def rii_sii(celdas: pd.DataFrame, a0: int, a1: int) -> pd.DataFrame:
+RESULTADOS = {"BPN": ("casos", "n"),
+              "BPN a término (únicos >=38 sem.)": ("casos_term", "n_term")}
+PERIODOS = [(2005, 2024), (2005, 2009), (2010, 2014), (2015, 2019), (2020, 2024)]
+
+
+def rii_sii(celdas: pd.DataFrame, a0: int, a1: int, resultado: str) -> pd.DataFrame:
     """RII: Poisson de casos frente al ridit (exposición n, cluster dpto).
-    SII: regresión lineal ponderada por n de p_celda, en puntos porcentuales."""
-    d = celdas[celdas["anio"].between(a0, a1)]
+    SII: regresión lineal ponderada por n de la prevalencia de la celda, en
+    puntos porcentuales. Mismo ajuste que el modelo principal (M4): edad, año,
+    altitud del municipio y efectos fijos de departamento."""
+    y, n = RESULTADOS[resultado]
+    d = celdas[celdas["anio"].between(a0, a1) & (celdas["alt_cat"] != 9)
+               & (celdas[n] > 0)]
     X = sm.add_constant(pd.concat([d["ridit"].rename("ridit"),
-                                   _dummies(d, "edad6", 2),
-                                   _dummies(d, "anio", a0)], axis=1).astype(float),
+                                   _dummies(d, "edad6", 2), _dummies(d, "anio", a0),
+                                   _dummies(d, "alt_cat", 1),
+                                   _dummies(d, "dpto_res", 5)], axis=1).astype(float),
                         has_constant="add")
     grupos = {"groups": d["dpto_res"].to_numpy(),
               "use_correction": True, "df_correction": True}
     filas = []
     for titulo, aj in [
-        ("RII", sm.GLM(d["casos"].astype(float), X, family=sm.families.Poisson(),
-                       offset=np.log(d["n"].astype(float))).fit(cov_type="cluster",
-                                                                cov_kwds=grupos)),
-        ("SII (pp)", sm.WLS(d["p_celda"].astype(float), X,
-                            weights=d["n"].astype(float)).fit(cov_type="cluster",
+        ("RII", sm.GLM(d[y].astype(float), X, family=sm.families.Poisson(),
+                       offset=np.log(d[n].astype(float))).fit(cov_type="cluster",
                                                               cov_kwds=grupos)),
+        ("SII (pp)", sm.WLS((d[y] / d[n]).astype(float), X,
+                            weights=d[n].astype(float)).fit(cov_type="cluster",
+                                                            cov_kwds=grupos)),
     ]:
         k, s = float(aj.params["ridit"]), float(aj.bse["ridit"])
         p = 2 * norm.sf(abs(k / s))
@@ -221,8 +235,8 @@ def rii_sii(celdas: pd.DataFrame, a0: int, a1: int) -> pd.DataFrame:
         else:
             fuera = {"valor": 100 * k, "li": 100 * (k - Z95 * s),
                      "ls": 100 * (k + Z95 * s)}
-        filas.append({"periodo": f"{a0}-{a1}", "indice": titulo,
-                      "p": p, **fuera})
+        filas.append({"resultado": resultado, "periodo": f"{a0}-{a1}",
+                      "indice": titulo, **fuera, "p": p})
     return pd.DataFrame(filas)
 
 
@@ -262,12 +276,11 @@ def calcular(celdas: pd.DataFrame) -> dict:
     c = celdas_obj3(celdas)
     pesos = poblacion_estandar(c)
     d = c.merge(ridit_educacion(c), on=["anio", "educ4"])
-    d["p_celda"] = d["casos"] / d["n"]
     return {
         "Prevalencias": prevalencias(c, pesos),
         "RP_modelos": razones_prevalencia(c),
-        "RII_SII_educacion": pd.concat([rii_sii(d, 2005, 2024), rii_sii(d, 2008, 2024)],
-                                       ignore_index=True),
+        "RII_SII_educacion": pd.concat([rii_sii(d, a0, a1, res) for res in RESULTADOS
+                                        for a0, a1 in PERIODOS], ignore_index=True),
         "_est_educ": estandarizada_anio(c, pesos, "educ4", 2005),
         "_est_reg": estandarizada_anio(c, pesos, "regimen", 2008),
         "_n_celdas": len(c),
