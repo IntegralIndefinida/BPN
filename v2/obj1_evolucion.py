@@ -1,16 +1,11 @@
-# -*- coding: utf-8 -*-
-# =============================================================================
-#  TRABAJO FINAL - BAJO PESO AL NACER EN COLOMBIA 2005-2024
-#  Python: obj1_evolucion.py
-#
 #  Parte A/B (base y variables armonizadas) la hace comun_bpn.cargar_celdas.
 #  Aquí va la Objetivo 1: Objetivo 1 - evolución y distribución del
 #  BPN: prevalencia nacional (cruda y estandarizada por edad), APC (Poisson
 #  robusto), prevalencia por departamento, calidad del registro del peso,
 #  por sexo y distribución del peso, con IC 95 % de Wilson, y descomposición
-#  de la tendencia por semanas de gestación (Kitagawa). Salidas:
-#  Objetivo1_Evolucion_BPN.xlsx, G1_bpn_nacional.png y el log.
-# =============================================================================
+#  de la tendencia por semanas de gestación (Kitagawa). 
+#  Salidas: Objetivo1_Evolucion_BPN.xlsx, G1_bpn_nacional.png y el log.
+
 import numpy as np
 import pandas as pd
 
@@ -23,9 +18,8 @@ _MAP_PESO = {"Menos de 1.000": 1, "1.000 a 1.499": 2, "1.500 a 1.999": 3,
              "3.500 a 3.999": 7, "4.000 y más": 8}
 
 
-# --------------------------------------------------------------------------- #
 # C1. Nacional por año: prevalencia cruda con IC 95 % y BPN a término
-# --------------------------------------------------------------------------- #
+
 def nacional_anio(celdas: pd.DataFrame) -> pd.DataFrame:
     d = (celdas.groupby("anio")
          .agg(nacidos_vivos=("n", "sum"), con_peso=("con_peso", "sum"),
@@ -42,10 +36,9 @@ def nacional_anio(celdas: pd.DataFrame) -> pd.DataFrame:
               "n_term", "bpn_term_n", "pct_bpn_term"]]
 
 
-# --------------------------------------------------------------------------- #
 # C2. Prevalencia estandarizada por edad de la madre (método directo;
 #     población estándar: todos los nacidos vivos 2005-2024 con peso y edad)
-# --------------------------------------------------------------------------- #
+
 def nacional_estandarizada(celdas: pd.DataFrame) -> pd.DataFrame:
     base = celdas[celdas["edad6"].notna() & celdas["con_peso"].gt(0)]
     pesos = base.groupby("edad6", observed=True)["con_peso"].sum()
@@ -59,9 +52,8 @@ def nacional_estandarizada(celdas: pd.DataFrame) -> pd.DataFrame:
               "li_estand", "ls_estand"]]
 
 
-# --------------------------------------------------------------------------- #
 # C3. Cambio porcentual anual (APC), nacional y por departamento
-# --------------------------------------------------------------------------- #
+
 def apc(celdas: pd.DataFrame) -> pd.DataFrame:
     por_anio = (celdas.groupby("anio")
                 .agg(con_peso=("con_peso", "sum"), bpn_n=("bpn_n", "sum"))
@@ -86,9 +78,8 @@ def apc(celdas: pd.DataFrame) -> pd.DataFrame:
         ["dpto_res", "departamento", "periodo", "apc", "li", "ls", "p", "n_anios"]]
 
 
-# --------------------------------------------------------------------------- #
 # C4. Por departamento de residencia y año, con IC 95 % (Wilson)
-# --------------------------------------------------------------------------- #
+
 def departamento_largo(celdas: pd.DataFrame) -> pd.DataFrame:
     d = (celdas[celdas["dpto_res"].gt(0)]
          .groupby(["dpto_res", "anio"])
@@ -113,9 +104,8 @@ def departamento_ancho(largo: pd.DataFrame) -> pd.DataFrame:
     return d.reset_index()
 
 
-# --------------------------------------------------------------------------- #
 # C5. Calidad del registro del peso por departamento y quinquenio
-# --------------------------------------------------------------------------- #
+
 def calidad_peso(celdas: pd.DataFrame) -> pd.DataFrame:
     d = celdas[celdas["dpto_res"].gt(0)].copy()
     d["quinq"] = 1 + (d["anio"] - 2005) // 5
@@ -128,9 +118,8 @@ def calidad_peso(celdas: pd.DataFrame) -> pd.DataFrame:
     return d
 
 
-# --------------------------------------------------------------------------- #
 # C6. Por sexo del nacido vivo y año (se excluye el sexo indeterminado)
-# --------------------------------------------------------------------------- #
+
 def por_sexo() -> pd.DataFrame:
     anios = list(range(cb.ANIO_INI, cb.ANIO_FIN + 1))
     tot = cb.conteos(["sexo"], anios)
@@ -151,9 +140,8 @@ def por_sexo() -> pd.DataFrame:
     return d.reset_index()[["anio", *orden]]
 
 
-# --------------------------------------------------------------------------- #
 # C7. Distribución del peso al nacer por año (%)
-# --------------------------------------------------------------------------- #
+
 def distribucion_peso() -> pd.DataFrame:
     anios = list(range(cb.ANIO_INI, cb.ANIO_FIN + 1))
     d = cb.conteos(["peso_grupo"], anios)
@@ -167,12 +155,11 @@ def distribucion_peso() -> pd.DataFrame:
     return d
 
 
-# --------------------------------------------------------------------------- #
 # C8. Semanas de gestación: qué explica la tendencia del BPN
-# --------------------------------------------------------------------------- #
 # Etiquetas de gestacion_grupo de dane-data -> grupos de análisis; el resto
 # (ignorado, sin información) va a "Sin dato". El DANE publica 28-37 semanas
 # juntas: no se puede separar la prematuridad (<37) de la semana 37.
+
 _MAP_GEST = {"Menos de 22": "Menos de 28 sem.", "De 22 a 27": "Menos de 28 sem.",
              "De 28 a 37": "28 a 37 sem.", "De 38 a 41": "38 sem. y más",
              "De 42 y más": "38 sem. y más"}
@@ -224,10 +211,8 @@ def descomposicion_gestacion(g: pd.DataFrame, a0: int = cb.ANIO_INI,
     d.insert(0, "periodo", f"{a0} a {a1}")
     return d
 
-
-# --------------------------------------------------------------------------- #
 # G1. Cruda con IC 95 % y estandarizada por edad
-# --------------------------------------------------------------------------- #
+
 def grafico_g1(nac: pd.DataFrame, estand: pd.DataFrame):
     import matplotlib.pyplot as plt
     d = nac[["anio", "pct_bpn", "li_bpn", "ls_bpn"]].merge(
@@ -254,10 +239,8 @@ def grafico_g1(nac: pd.DataFrame, estand: pd.DataFrame):
 
 FUENTE = "Fuente: DANE, Estadísticas Vitales. Cálculos propios."
 
-
-# --------------------------------------------------------------------------- #
 # G12. Mapa de calor: % BPN por departamento y año
-# --------------------------------------------------------------------------- #
+
 def grafico_mapa_calor(ancho: pd.DataFrame):
     import matplotlib.pyplot as plt
     anios = [c for c in ancho.columns if c.isdigit()]
@@ -278,9 +261,8 @@ def grafico_mapa_calor(ancho: pd.DataFrame):
     return fig
 
 
-# --------------------------------------------------------------------------- #
 # G13. % BPN por sexo del nacido vivo
-# --------------------------------------------------------------------------- #
+
 def grafico_sexo(sexo: pd.DataFrame):
     import matplotlib.pyplot as plt
     fig, ax = plt.subplots(figsize=(8, 5))
@@ -299,9 +281,8 @@ def grafico_sexo(sexo: pd.DataFrame):
     return fig
 
 
-# --------------------------------------------------------------------------- #
 # G14. Distribución del peso al nacer por año (áreas apiladas)
-# --------------------------------------------------------------------------- #
+
 def grafico_distribucion(dist: pd.DataFrame):
     import matplotlib.pyplot as plt
     grupos = [g for g in cb.PESO_GRUPO_ETQ.values() if g in dist.columns]
@@ -322,9 +303,8 @@ def grafico_distribucion(dist: pd.DataFrame):
     return fig
 
 
-# --------------------------------------------------------------------------- #
 # Interfaz del módulo: calcular -> imprimir / graficos (ver correr.py)
-# --------------------------------------------------------------------------- #
+
 LOG = "log_01_base_objetivo1"
 
 

@@ -1,6 +1,3 @@
-# -*- coding: utf-8 -*-
-# =============================================================================
-#  TRABAJO FINAL - BAJO PESO AL NACER EN COLOMBIA 2005-2024
 #  Fuente: DANE, Estadísticas Vitales (EEVV) - microdatos de nacimientos
 #
 #  comun_bpn.py  (módulo común de los 4 scripts de Python)
@@ -14,7 +11,6 @@
 #  - Altitud por municipio: merge con el CSV e imputación con la media del
 #    departamento ponderada por nacimientos.
 #  - Caché en parquet por año para no releer los archivos del DANE.
-# =============================================================================
 
 from __future__ import annotations
 
@@ -29,9 +25,8 @@ import numpy as np
 import pandas as pd
 import dane_data as dd
 
-# --------------------------------------------------------------------------- #
 # 0. RUTAS Y AÑOS
-# --------------------------------------------------------------------------- #
+
 RAIZ = Path(__file__).resolve().parents[3]        # .../3. Metodologia
 DATOS = RAIZ / "3.0 Datos"
 SALIDAS = DATOS / "python_v2"                     # gráficos, xlsx y logs
@@ -40,12 +35,11 @@ ALTITUD_CSV = DATOS / "altitud_municipios.csv"    # insumo de altitud
 
 ANIO_INI, ANIO_FIN = 2005, 2024
 
-# --------------------------------------------------------------------------- #
 # 1. ETIQUETAS
-# --------------------------------------------------------------------------- #
 # Departamento de residencia (DIVIPOLA); 0 = sin información / exterior.
 # Los códigos válidos son los 33 de dane_data.referencias.DEPARTAMENTOS
 # (5..99); 1-4 y 75 son códigos crudos fuera de la tabla y se hacen 0.
+
 DPTO_NOM = {
     0: "Sin información / exterior",
     5: "Antioquia",            8: "Atlántico",          11: "Bogotá D.C.",
@@ -74,9 +68,8 @@ EDUC4_ETQ = {1: "Ninguno o preescolar", 2: "Primaria",
 REGIMEN_ETQ = {1: "Contributivo, excepción o especial", 2: "Subsidiado",
                3: "No asegurado", 9: "Sin información"}
 
-# --------------------------------------------------------------------------- #
 # 2. LOG: imita el log del análisis (consola + archivo en SALIDAS)
-# --------------------------------------------------------------------------- #
+
 class _Tee:
     """Reenvía lo que se imprime a la consola y a un archivo de log."""
 
@@ -117,9 +110,8 @@ class log_salida:
             self._tee.close()
 
 
-# --------------------------------------------------------------------------- #
 # 3. ARMONIZACIÓN DE UN AÑO -> celdas (Parte A/B del 01 análisis, por año)
-# --------------------------------------------------------------------------- #
+
 def _peso_grupo(peso: pd.Series) -> pd.Series:
     """PESO_NAC -> grupos 1..8 (el DANE lo publica en grupos en 2005-2024).
 
@@ -305,17 +297,15 @@ def cargar_celdas(anios=None, refrescar: bool = False) -> pd.DataFrame:
     return _imputar_altitud(celdas)
 
 
-# --------------------------------------------------------------------------- #
 # 4. FRECUENCIAS que no salen de las celdas (dd.eevv.serie_conteos)
-# --------------------------------------------------------------------------- #
+
 def conteos(por, anios=None, dropna: bool = True) -> pd.DataFrame:
     """Conteos de nacimientos por año y las columnas `por` (serie_conteos)."""
     return dd.eevv.serie_conteos(anios, tipo="nacimientos", por=por, dropna=dropna)
 
 
-# --------------------------------------------------------------------------- #
 # 5. ESTADÍSTICA COMÚN
-# --------------------------------------------------------------------------- #
+
 def wilson(casos, n, alpha: float = 0.05):
     """IC de Wilson de una proporción (li, ls) en porcentaje, como el análisis."""
     from statsmodels.stats.proportion import proportion_confint
@@ -361,9 +351,8 @@ def apc_poisson(df: pd.DataFrame, ini: int = ANIO_INI, fin: int = ANIO_FIN) -> d
             "p": 2 * norm.sf(abs(b / se)), "n_anios": len(d)}
 
 
-# --------------------------------------------------------------------------- #
 # 5. EXPORT Y GRÁFICOS
-# --------------------------------------------------------------------------- #
+
 def exportar_excel_nuevo(dfs: dict[str, pd.DataFrame], ruta_xlsx: str) -> None:
     """Escribe un libro completo de una vez (hojas en el orden del dict)."""
     SALIDAS.mkdir(parents=True, exist_ok=True)

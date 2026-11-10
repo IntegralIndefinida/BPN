@@ -1,8 +1,3 @@
-# -*- coding: utf-8 -*-
-# =============================================================================
-#  TRABAJO FINAL - BAJO PESO AL NACER EN COLOMBIA 2005-2024
-#  Python: obj2_desigualdades.py
-#
 #  Objetivo 2: desigualdades departamentales en el BPN mediante razones y
 #  diferencias de prevalencias (RP/DP) frente a una referencia elegible
 #  (menor prevalencia entre departamentos con pesos y cobertura de registro
@@ -13,7 +8,7 @@
 #  siempre en tierras bajas. IC 95 %: binomial (delta) para RP y DP;
 #  simulación binomial para Theil y PAF.
 #  Salidas: Objetivo2_Desigualdades_RT_DT.xlsx, G7 y G8 png, log.
-# =============================================================================
+
 import numpy as np
 import pandas as pd
 
@@ -28,9 +23,8 @@ QUINQ_ETQ = {1: "2005-2009", 2: "2010-2014", 3: "2015-2019", 4: "2020-2024"}
 AZUL, NARANJA = "#08519C", "#A63603"   # par verificado para daltonismo
 
 
-# --------------------------------------------------------------------------- #
 # A. Panel departamento-año
-# --------------------------------------------------------------------------- #
+
 def panel_dpto_anio(celdas: pd.DataFrame) -> pd.DataFrame:
     d = (celdas[celdas["dpto_res"].gt(0)]
          .groupby(["dpto_res", "anio"])
@@ -114,9 +108,8 @@ def _quinquenios(panel: pd.DataFrame) -> pd.DataFrame:
                          .sum(), MIN_QUINQ)
 
 
-# --------------------------------------------------------------------------- #
 # B. Quinquenios: RP/DP frente a la referencia y a la prevalencia de las 33
-# --------------------------------------------------------------------------- #
+
 def rt_dt_quinquenio(d: pd.DataFrame) -> pd.DataFrame:
     d = _quinquenios(d)
     d["li"], d["ls"] = cb.wilson(d["bpn_n"], d["con_peso"])
@@ -167,9 +160,8 @@ def rt_dt_anual(d: pd.DataFrame) -> pd.DataFrame:
         ["anio", "dpto_res"]).reset_index(drop=True)
 
 
-# --------------------------------------------------------------------------- #
 # C. Medidas resumen por periodo (programa resumen_desig del análisis)
-# --------------------------------------------------------------------------- #
+
 def resumen_desig(d: pd.DataFrame, periodo: str, tipo: str) -> dict:
     """Medidas de desigualdad de un periodo: mu, referencia elegible, PAR/PAF,
     exceso, Theil y MLD ponderados por nacidos con peso, y extremos."""
@@ -224,9 +216,8 @@ def medidas_resumen(panel: pd.DataFrame) -> pd.DataFrame:
          "dt_ext", "rt_ext_el", "dt_ext_el"]]
 
 
-# --------------------------------------------------------------------------- #
 # G7. Dot plot de RP por departamento, primer y último quinquenio
-# --------------------------------------------------------------------------- #
+
 def grafico_g7(ancho: pd.DataFrame, ancho_aj: pd.DataFrame):
     """Dos paneles con el mismo eje y el mismo orden (el de la RP ajustada del
     último quinquenio): prevalencia cruda y ajustada por altitud y edad."""
@@ -259,10 +250,9 @@ def grafico_g7(ancho: pd.DataFrame, ancho_aj: pd.DataFrame):
     return fig
 
 
-# --------------------------------------------------------------------------- #
 # G8. Theil y PAF anuales, crudos y ajustados (un panel por medida: sin eje
 #     doble, que inventa una relación entre dos escalas arbitrarias)
-# --------------------------------------------------------------------------- #
+
 def grafico_g8(resumen: pd.DataFrame, resumen_aj: pd.DataFrame):
     import matplotlib.pyplot as plt
     fig, ejes = plt.subplots(1, 2, figsize=(10, 4.8), sharex=True)
@@ -292,9 +282,8 @@ def grafico_g8(resumen: pd.DataFrame, resumen_aj: pd.DataFrame):
     return fig
 
 
-# --------------------------------------------------------------------------- #
 # Interfaz del módulo: calcular -> imprimir / graficos (ver correr.py)
-# --------------------------------------------------------------------------- #
+
 LOG = "log_02_objetivo2"
 
 

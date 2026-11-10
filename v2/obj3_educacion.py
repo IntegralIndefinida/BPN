@@ -1,8 +1,3 @@
-# -*- coding: utf-8 -*-
-# =============================================================================
-#  TRABAJO FINAL - BAJO PESO AL NACER EN COLOMBIA 2005-2024
-#  Python: obj3_educacion.py
-#
 #  Objetivo 3: relación entre el nivel educativo de la madre / régimen de
 #  afiliación (proxy socioeconómico, 2008-2024) y la prevalencia de BPN.
 #   A. Prevalencia cruda y estandarizada por edad de la madre (directa).
@@ -17,7 +12,7 @@
 #  No se ajusta por gestación, controles prenatales ni tipo de parto
 #  (mediadores, ver nota técnica del análisis).
 #  Salidas: Objetivo3_Educacion_Regimen_BPN.xlsx, G9, G10 y log.
-# =============================================================================
+
 import numpy as np
 import pandas as pd
 from scipy.stats import norm
@@ -29,9 +24,8 @@ EXCEL = "Objetivo3_Educacion_Regimen_BPN.xlsx"
 Z95 = 1.96
 
 
-# --------------------------------------------------------------------------- #
 # 0. Celdas del objetivo 3
-# --------------------------------------------------------------------------- #
+
 def celdas_obj3(celdas: pd.DataFrame) -> pd.DataFrame:
     """Nacidos con dpto válido, peso y edad conocidos, agrupados por
     (anio, dpto_res, educ4, regimen, edad6, alt_cat); los faltantes de
@@ -56,9 +50,8 @@ def poblacion_estandar(celdas: pd.DataFrame) -> pd.Series:
     return n / n.sum()
 
 
-# --------------------------------------------------------------------------- #
 # A. Prevalencia cruda y estandarizada por edad
-# --------------------------------------------------------------------------- #
+
 def prevalencias(celdas: pd.DataFrame, pesos: pd.Series) -> pd.DataFrame:
     filas = []
     for var, etqs, grupo, periodos in [
@@ -86,9 +79,8 @@ def estandarizada_anio(celdas: pd.DataFrame, pesos: pd.Series, var: str,
     return agg[["anio", var, "n", "pct_estand"]]
 
 
-# --------------------------------------------------------------------------- #
 # B. Razones de prevalencia: GLM Poisson, exposición n, cluster dpto_res
-# --------------------------------------------------------------------------- #
+
 def _dummies(df: pd.DataFrame, col: str, ref: int) -> pd.DataFrame:
     """Indicadoras de `col` (strings) sin la categoría de referencia."""
     d = pd.get_dummies(df[col].astype(int).astype(str), prefix=col, dtype=float)
@@ -188,9 +180,8 @@ def razones_prevalencia(celdas: pd.DataFrame) -> pd.DataFrame:
     return pd.DataFrame(filas)
 
 
-# --------------------------------------------------------------------------- #
 # C. RII y SII por educación (ridit por año: 0 = más educada, 1 = menos)
-# --------------------------------------------------------------------------- #
+
 def ridit_educacion(celdas: pd.DataFrame) -> pd.DataFrame:
     d = celdas[celdas["educ4"] != 9]
     tot = (d.groupby(["anio", "educ4"], as_index=False)["n"].sum()
@@ -244,6 +235,7 @@ def rii_sii(celdas: pd.DataFrame, a0: int, a1: int, resultado: str) -> pd.DataFr
 
 # La educación falta más en los departamentos más pobres (no al azar). Cotas
 # extremas: se asigna a todas las madres sin dato el nivel más bajo o el más alto.
+
 FALTANTES = {"Excluidos (principal)": None, "Como nivel más bajo": 1,
              "Como nivel más alto": 4}
 
@@ -278,9 +270,8 @@ def educacion_faltante(c: pd.DataFrame) -> pd.DataFrame:
                       d], ignore_index=True)
 
 
-# --------------------------------------------------------------------------- #
 # G9/G10. Prevalencia estandarizada por año según educ4 y según régimen
-# --------------------------------------------------------------------------- #
+
 def grafico_estand(agg: pd.DataFrame, var: str, desde: int, titulo: str,
                    colores: dict[int, str], nota: str,
                    trazo3: str | None = None):
@@ -303,9 +294,8 @@ def grafico_estand(agg: pd.DataFrame, var: str, desde: int, titulo: str,
     return fig
 
 
-# --------------------------------------------------------------------------- #
 # Interfaz del módulo: calcular -> imprimir / graficos (ver correr.py)
-# --------------------------------------------------------------------------- #
+
 LOG = "log_03_objetivo3"
 
 

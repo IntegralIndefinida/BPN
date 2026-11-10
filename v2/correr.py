@@ -1,4 +1,3 @@
-# -*- coding: utf-8 -*-
 """Corre los objetivos y guarda sus salidas (log, xlsx y png) en cb.SALIDAS.
 
     python correr.py          # los 4 objetivos, en orden

@@ -1,8 +1,3 @@
-# -*- coding: utf-8 -*-
-# =============================================================================
-#  TRABAJO FINAL - BAJO PESO AL NACER EN COLOMBIA 2005-2024
-#  Python: obj4_concentracion.py
-#
 #  Objetivo 4: desigualdades socioeconómicas del BPN entre departamentos con
 #  curvas e índices de concentración (C, Wagstaff W y Erreygers E), ponderados
 #  por nacidos. Ordenamiento principal: % de madres NO afiliadas al régimen
@@ -16,7 +11,7 @@
 #  realización de un proceso; el bootstrap por departamento mide la
 #  variabilidad del índice ante esa realización (los nacimientos son censales).
 #  Salidas: Objetivo4_Indice_Concentracion_BPN.xlsx, G2-G6 y G11, log.
-# =============================================================================
+
 import numpy as np
 import pandas as pd
 import statsmodels.api as sm
@@ -48,9 +43,8 @@ V_ESTAND = 2
 V_SIN_BOGOTA = 3
 
 
-# --------------------------------------------------------------------------- #
 # A. Panel departamento-año (2008-2024) con estandarización indirecta
-# --------------------------------------------------------------------------- #
+
 ALT_ETQ = {1: "Menos de 500 m", 2: "500-999 m", 3: "1.000-1.499 m",
            4: "1.500-1.999 m", 5: "2.000-2.499 m", 6: "2.500 m y más"}
 _REF_STD = {"alt_cat": 1, "edad6": 2}     # categorías de referencia del modelo
@@ -174,9 +168,8 @@ def calc_ind(d: pd.DataFrame, grupo: str) -> pd.DataFrame:
     return d
 
 
-# --------------------------------------------------------------------------- #
 # ic_conc: índice de concentración por regresión conveniente (Kakwani 1997)
-# --------------------------------------------------------------------------- #
+
 def ic_conc(h: pd.Series, w: pd.Series, rango: pd.Series) -> dict:
     """C por regresión conveniente con errores robustos; W y E."""
     fin = np.isfinite(h) & np.isfinite(w) & np.isfinite(rango)
@@ -249,9 +242,8 @@ def bootstrap_ic(h: np.ndarray, w: np.ndarray, rango: np.ndarray,
             "se_E": (4 * (mu_b / 100) * C_b).std(ddof=1), "C_b": C_b}
 
 
-# --------------------------------------------------------------------------- #
 # B1. Índices por año, las 10 variantes
-# --------------------------------------------------------------------------- #
+
 def C_anual(panel: pd.DataFrame) -> pd.DataFrame:
     filas = []
     for anio in range(ANIO_INI, ANIO_FIN + 1):
@@ -266,9 +258,8 @@ def C_anual(panel: pd.DataFrame) -> pd.DataFrame:
     return pd.DataFrame(filas)[["anio", "variante", "C", "se_reg", "W", "E", "mu", "N"]]
 
 
-# --------------------------------------------------------------------------- #
 # B2. Bootstrap por departamento, anual (principal y estandarizado)
-# --------------------------------------------------------------------------- #
+
 def C_anual_bootstrap(panel: pd.DataFrame) -> pd.DataFrame:
     filas = []
     for anio in range(ANIO_INI, ANIO_FIN + 1):
@@ -287,9 +278,8 @@ def C_anual_bootstrap(panel: pd.DataFrame) -> pd.DataFrame:
     return pd.DataFrame(filas)
 
 
-# --------------------------------------------------------------------------- #
 # C. Trienios 2008-2010 vs 2022-2024
-# --------------------------------------------------------------------------- #
+
 def trienio_agregar(panel: pd.DataFrame) -> pd.DataFrame:
     d = panel[panel["anio"].between(2008, 2010) | panel["anio"].between(2022, 2024)]
     d = d.assign(periodo=np.where(d["anio"] <= 2010, 1, 2))
@@ -376,9 +366,8 @@ def orden_dptos(trienios: pd.DataFrame) -> pd.DataFrame:
               "altiplano", "nacidos", "con_peso"]]
 
 
-# --------------------------------------------------------------------------- #
 # D. Curvas de concentración (trienios; 3 muestras)
-# --------------------------------------------------------------------------- #
+
 def curva(trienios: pd.DataFrame, muestra: int, periodo: int) -> pd.DataFrame:
     """muestra (numeración del análisis, no la de `variantes`):
     1 = principal, 2 = sin Bogotá, 3 = estandarizada."""
@@ -540,9 +529,8 @@ def axial_estilado(ax, titulo: str) -> None:
     ax.set_title(titulo, fontsize=11)
 
 
-# --------------------------------------------------------------------------- #
 # G2. C anual: principal (IC bootstrap) y estandarizado y sin Bogotá
-# --------------------------------------------------------------------------- #
+
 def grafico_g2(boot: pd.DataFrame, anual: pd.DataFrame):
     import matplotlib.pyplot as plt
     pr = boot[boot["variante"] == variantes[V_PRINCIPAL - 1][0]]
@@ -573,9 +561,8 @@ def grafico_g2(boot: pd.DataFrame, anual: pd.DataFrame):
     return fig
 
 
-# --------------------------------------------------------------------------- #
 # E. Validación del ordenamiento contra NBI/IPM (si existe la plantilla)
-# --------------------------------------------------------------------------- #
+
 def validacion_proxy(panel: pd.DataFrame) -> pd.DataFrame | None:
     ruta = cb.DATOS / "nbi_ipm_departamentos.csv"
     if not ruta.exists():
@@ -603,9 +590,8 @@ def validacion_proxy(panel: pd.DataFrame) -> pd.DataFrame | None:
     return pd.DataFrame(filas)
 
 
-# --------------------------------------------------------------------------- #
 # Interfaz del módulo: calcular -> imprimir / graficos (ver correr.py)
-# --------------------------------------------------------------------------- #
+
 LOG = "log_04_objetivo4"
 
 
