@@ -231,13 +231,17 @@ def _imputar_altitud(celdas: pd.DataFrame) -> pd.DataFrame:
 
 
 def _huella(fuente: Path) -> str:
-    """Firma del caché: archivo del DANE + versión dane-data + este módulo
+    """Firma del caché: archivo del DANE + código de dane-data (los archivos
+    del paquete, no solo la versión: la instalación es editable) + este módulo
     + CSV de altitud (la altitud queda guardada en las celdas)."""
     st = fuente.stat()
     h = hashlib.sha1()
     h.update(str(fuente).encode())
     h.update(f"{st.st_size}-{st.st_mtime_ns}".encode())
     h.update(importlib.metadata.version("dane-data").encode())
+    paquete = Path(dd.__file__).resolve().parent
+    for py in sorted(paquete.rglob("*.py")):
+        h.update(py.read_bytes())
     h.update(Path(__file__).read_bytes())
     h.update(ALTITUD_CSV.read_bytes())
     return h.hexdigest()
@@ -262,12 +266,13 @@ def cargar_celdas(anios=None, refrescar: bool = False) -> pd.DataFrame:
         fuente = dd.eevv.find_files(anio, tipo="nacimientos")[anio]
         h = _huella(fuente)
         destino, meta = carpeta / f"celdas_{anio}.parquet", carpeta / f"celdas_{anio}.json"
-        if not refrescar and destino.exists() and json.loads(
-                meta.read_text()).get("huella") == h:
-            m = json.loads(meta.read_text())
+        m = json.loads(meta.read_text()) if meta.exists() else None
+        if not refrescar and destino.exists() and m and m.get("huella") == h:
             print(f"  {anio}: celdas en caché ({m['celdas']:,})")
             registro.append({"anio": anio, "archivo": m["archivo"],
                              "registros": m["registros"]})
+            partes.append(pd.read_parquet(destino))
+
         else:
             t0 = time.time()
             c = _armonizar(anio)
@@ -279,7 +284,7 @@ def cargar_celdas(anios=None, refrescar: bool = False) -> pd.DataFrame:
                   f"({m['registros']:,} registros)")
             registro.append({"anio": anio, "archivo": m["archivo"],
                              "registros": m["registros"]})
-        partes.append(pd.read_parquet(destino))
+            partes.append(c)   # el parquet acaba de escribirse: no se relee
 
     reg_nuevo = pd.DataFrame(registro).assign(anio=lambda r: r["anio"].astype(int))
     reg_exist = (pd.read_csv(control)
