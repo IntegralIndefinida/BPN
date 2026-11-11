@@ -141,20 +141,20 @@ def panel_obj4(celdas: pd.DataFrame) -> pd.DataFrame:
                   n_term=("n_term", "sum"), bpn_term_n=("bpn_term_n", "sum"),
                   n_s=("n_s", "sum"), casos_s=("casos_s", "sum"),
                   esperado_s=("esperado_s", "sum"), n_alt=("n_alt", "sum"),
-                  n_alto=("n_alto", "sum"), nacidos_alt=("nacidos", "sum")))
+                  n_alto=("n_alto", "sum")))
     panel = calc_ind(panel, "anio")
 
     # Altitud media del departamento (pond. por nacimientos) y altiplano:
     # más de la mitad de los nacimientos 2008-2024 en municipios >= 2.000 m
     g = panel.groupby("dpto_res", as_index=False).agg(
         a_alt=("n_alt", "sum"), n_alto=("n_alto", "sum"),
-        n_total=("nacidos_alt", "sum"))
+        n_total=("nacidos", "sum"))
     g["alt_dpto"] = g["a_alt"] / g["n_total"]
     g["pct_alto2000"] = 100 * g["n_alto"] / g["n_total"]
     g["altiplano"] = (g["pct_alto2000"] > 50).astype(int)
     panel = panel.merge(g[["dpto_res", "alt_dpto", "pct_alto2000", "altiplano"]],
                         on="dpto_res")
-    panel.drop(columns=["n_alt", "n_alto", "nacidos_alt"], inplace=True)
+    panel.drop(columns=["n_alt", "n_alto"], inplace=True)
     panel.insert(1, "departamento", panel["dpto_res"].map(cb.DPTO_NOM))
     panel["anio"] = panel["anio"].astype(int)
     return panel.sort_values(["anio", "dpto_res"]).reset_index(drop=True)
