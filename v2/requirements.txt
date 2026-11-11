@@ -1,0 +1,11 @@
+#  Entorno del análisis (venv `datascience`):
+#    ~/.venvs/datascience/bin/pip install -r requirements.txt
+#
+#  dane-data se instala aparte, editable, desde su repositorio:
+#    pip install -e <ruta>/col_data_wrapper
+matplotlib==3.10.9
+numpy==2.4.4
+openpyxl==3.1.5
+pandas==3.0.3
+scipy==1.16.3
+statsmodels==0.14.6

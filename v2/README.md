@@ -7,15 +7,17 @@ Estadísticas Vitales del DANE. Los scripts producen las salidas del análisis
 ## Requisitos
 
 - Python del venv `datascience`: `~/.venvs/datascience/bin/python`
-  (pandas, numpy, statsmodels, scipy, openpyxl, matplotlib).
+  (pandas, numpy, statsmodels, scipy, openpyxl, matplotlib; las versiones
+  exactas están en `requirements.txt`).
 - `dane-data` con los archivos de nacimientos 2005-2024 ya descargados
-  (`dd.eevv.available()`).
+  (`dd.eevv.available()`), instalado editable desde su repositorio.
 - Insumo `3.0 Datos/altitud_municipios.csv` (altitud por municipio).
 
 ## Ejecución
 
 ```
 cd "…/3. Metodologia/Code/python/v2"
+~/.venvs/datascience/bin/python test_bpn.py      # pruebas de la lógica central
 ~/.venvs/datascience/bin/python correr.py        # los 4 objetivos
 ~/.venvs/datascience/bin/python correr.py 2 4    # solo los objetivos 2 y 4
 ```
