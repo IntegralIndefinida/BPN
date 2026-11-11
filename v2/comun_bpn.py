@@ -334,6 +334,13 @@ def estandarizar_edad(d: pd.DataFrame, por: list[str], pesos: pd.Series,
             .sum())
 
 
+def pesos_edad(d: pd.DataFrame, columna: str = "n") -> pd.Series:
+    """Población estándar por edad6 (w_edad), ponderada por `columna`: los
+    nacidos de `d`, que cada objetivo filtra antes (peso y edad conocidos)."""
+    n = d.groupby("edad6", observed=True)[columna].sum()
+    return n / n.sum()
+
+
 def apc_poisson(df: pd.DataFrame, ini: int = ANIO_INI, fin: int = ANIO_FIN) -> dict:
     """Cambio porcentual anual (APC): Poisson con offset log(con_peso) y errores
     robustos. Requiere columnas anio, bpn_n y con_peso.

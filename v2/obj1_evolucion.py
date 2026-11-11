@@ -41,8 +41,7 @@ def nacional_anio(celdas: pd.DataFrame) -> pd.DataFrame:
 
 def nacional_estandarizada(celdas: pd.DataFrame) -> pd.DataFrame:
     base = celdas[celdas["edad6"].notna() & celdas["con_peso"].gt(0)]
-    pesos = base.groupby("edad6", observed=True)["con_peso"].sum()
-    pesos /= pesos.sum()
+    pesos = cb.pesos_edad(base, "con_peso")
     d = cb.estandarizar_edad(base, ["anio"], pesos, n="con_peso", casos="bpn_n")
     d["pct_cruda"] = 100 * d["casos"] / d["n"]
     d["pct_estand"] = 100 * d["comp"]

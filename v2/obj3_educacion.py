@@ -43,13 +43,6 @@ def celdas_obj3(celdas: pd.DataFrame) -> pd.DataFrame:
                  n_term=("n_term", "sum"), casos_term=("bpn_term_n", "sum")))
 
 
-def poblacion_estandar(celdas: pd.DataFrame) -> pd.Series:
-    """Población estándar (w_edad por edad6): todos los nacidos con peso y
-    edad conocidos 2005-2024."""
-    n = celdas.groupby("edad6", observed=True)["n"].sum()
-    return n / n.sum()
-
-
 # A. Prevalencia cruda y estandarizada por edad
 
 def prevalencias(celdas: pd.DataFrame, pesos: pd.Series) -> pd.DataFrame:
@@ -302,7 +295,7 @@ LOG = "log_03_objetivo3"
 def calcular(celdas: pd.DataFrame) -> dict:
     """Tablas del objetivo 3; las claves con "_" son intermedias (no van al xlsx)."""
     c = celdas_obj3(celdas)
-    pesos = poblacion_estandar(c)
+    pesos = cb.pesos_edad(c)   # población estándar: con peso y edad conocidos
     return {
         "Prevalencias": prevalencias(c, pesos),
         "RP_modelos": razones_prevalencia(c),
