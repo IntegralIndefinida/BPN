@@ -50,6 +50,9 @@ ALT_ETQ = {1: "Menos de 500 m", 2: "500-999 m", 3: "1.000-1.499 m",
 _REF_STD = {"alt_cat": 1, "edad6": 2}     # categorías de referencia del modelo
 
 
+_ajuste_altitud = None      # caché del modelo: un único ajuste por corrida
+
+
 def _modelo_altitud(d: pd.DataFrame):
     """Poisson de BPN sobre altitud y edad materna, con año y efectos fijos de
     departamento como controles (errores agrupados por departamento).
@@ -57,7 +60,15 @@ def _modelo_altitud(d: pd.DataFrame):
     Los efectos fijos hacen que el efecto de la altitud se estime comparando
     municipios de un mismo departamento, sin mezclarlo con las demás
     diferencias entre departamentos (O'Donnell et al. 2008, cap. 5: se
-    controla por el departamento, pero no se estandariza por él)."""
+    controla por el departamento, pero no se estandariza por él).
+
+    El modelo es siempre el mismo (la serie completa 2005-2024, dpto > 0), así
+    que se ajusta una sola vez por corrida y se reusa (lo llaman
+    estandarizar_indirecta, dos veces, y efecto_altitud_edad)."""
+    global _ajuste_altitud
+    clave = (len(d), float(d["con_peso"].sum()), float(d["bpn_n"].sum()))
+    if _ajuste_altitud is not None and _ajuste_altitud[0] == clave:
+        return _ajuste_altitud[1]
     k = (d[d["alt_cat"].notna() & d["edad6"].notna()]
          .groupby(["anio", "dpto_res", "alt_cat", "edad6"], as_index=False)
          [["con_peso", "bpn_n"]].sum())
@@ -66,9 +77,11 @@ def _modelo_altitud(d: pd.DataFrame):
                    .drop(columns=f"{c}_{ref}")
                    for c, ref in [*_REF_STD.items(), ("anio", int(k["anio"].min())),
                                   ("dpto_res", cb.DPTOS_VALIDOS[0])]], axis=1)
-    return sm.GLM(k["bpn_n"], sm.add_constant(X), family=sm.families.Poisson(),
-                  offset=np.log(k["con_peso"])).fit(
+    res = sm.GLM(k["bpn_n"], sm.add_constant(X), family=sm.families.Poisson(),
+                 offset=np.log(k["con_peso"])).fit(
         cov_type="cluster", cov_kwds={"groups": k["dpto_res"].to_numpy()})
+    _ajuste_altitud = (clave, res)
+    return res
 
 
 def estandarizar_indirecta(d: pd.DataFrame) -> pd.DataFrame:
