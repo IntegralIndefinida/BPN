@@ -294,10 +294,12 @@ def C_anual_bootstrap(panel: pd.DataFrame) -> pd.DataFrame:
     return pd.DataFrame(filas)
 
 
-# C. Trienios 2008-2010 vs 2022-2024
+# C. Trienios 2008-2010 vs 2022-2024 (y vs 2019-2021, antes del quiebre de registro)
 
-def trienio_agregar(panel: pd.DataFrame) -> pd.DataFrame:
-    d = panel[panel["anio"].between(2008, 2010) | panel["anio"].between(2022, 2024)]
+def trienio_agregar(panel: pd.DataFrame, fin=(2022, 2024)) -> pd.DataFrame:
+    """Periodo 1 = 2008-2010; periodo 2 = `fin` (2019-2021: antes del quiebre
+    de registro de 2022)."""
+    d = panel[panel["anio"].between(2008, 2010) | panel["anio"].between(*fin)]
     d = d.assign(periodo=np.where(d["anio"] <= 2010, 1, 2))
     d = (d.groupby(["periodo", "dpto_res"], as_index=False)
          .agg(nacidos=("nacidos", "sum"), con_peso=("con_peso", "sum"),
@@ -314,10 +316,10 @@ def trienio_agregar(panel: pd.DataFrame) -> pd.DataFrame:
     return d.sort_values(["periodo", "dpto_res"]).reset_index(drop=True)
 
 
-def C_trienios(trienios: pd.DataFrame) -> pd.DataFrame:
+def C_trienios(trienios: pd.DataFrame, etq_fin: str = "2022-2024") -> pd.DataFrame:
     filas = []
     for v, (nombre, col_h, col_w, col_r, cond) in enumerate(variantes, start=1):
-        for p, etq in [(1, "2008-2010"), (2, "2022-2024")]:
+        for p, etq in [(1, "2008-2010"), (2, etq_fin)]:
             sub = trienios[trienios["periodo"] == p]
             if cond:
                 sub = sub.query(cond)
@@ -615,12 +617,15 @@ def calcular(celdas: pd.DataFrame) -> dict:
     """Tablas del objetivo 4; las claves con "_" son intermedias (no van al xlsx)."""
     panel = panel_obj4(celdas)
     trienios = trienio_agregar(panel)
+    pre = trienio_agregar(panel, (2019, 2021))
     r = {
         "Panel_dpto_anio": panel,
         "C_anual_variantes": C_anual(panel),
         "C_anual_bootstrap": C_anual_bootstrap(panel),
         "C_trienios": C_trienios(trienios),
         "Diferencia_trienios": diferencia_trienios(trienios),
+        "C_trienios_pre2022": C_trienios(pre, "2019-2021"),
+        "Diferencia_trienios_pre2022": diferencia_trienios(pre),
         "Orden_dptos_trienios": orden_dptos(trienios),
         "Efecto_altitud_edad": efecto_altitud_edad(celdas),
         "_curvas": curvas_datos(trienios),
@@ -644,9 +649,13 @@ def imprimir(r: dict) -> None:
     print("\n--- B2. Bootstrap anual (principal y estandarizado) ---")
     for f in r["C_anual_bootstrap"].itertuples():
         print(f"  {f.anio} - {f.variante}: C = {f.C:.4f}  EE bootstrap = {f.se_bs:.4f}")
-    print("\n--- C. Trienios 2008-2010 vs 2022-2024 ---")
-    for f in r["Diferencia_trienios"].itertuples():
-        print(f"  {f.variante}: cambio en C = {f.dif:.4f}  EE = {f.se_bs:.4f}")
+    for etq, hoja in [("2022-2024", "Diferencia_trienios"),
+                      ("2019-2021, antes del quiebre de registro",
+                       "Diferencia_trienios_pre2022")]:
+        print(f"\n--- C. Trienios 2008-2010 vs {etq} ---")
+        for f in r[hoja].itertuples():
+            print(f"  {f.variante}: C1 = {f.C1:.4f}  C2 = {f.C2:.4f}  "
+                  f"cambio = {f.dif:.4f}  EE = {f.se_bs:.4f}  p = {f.p:.3f}")
 
 
 def graficos(r: dict) -> dict:
