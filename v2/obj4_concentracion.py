@@ -1,7 +1,7 @@
 #  Objetivo 4: desigualdades socioeconómicas del BPN entre departamentos con
 #  curvas e índices de concentración (C, Wagstaff W y Erreygers E), ponderados
 #  por nacidos. Ordenamiento principal: % de madres NO afiliadas al régimen
-#  contributivo (10 variantes). Regresión conveniente de Kakwani et al.
+#  contributivo (11 variantes). Regresión conveniente de Kakwani et al.
 #  (1997). Inferencia: bootstrap por departamento (1.000 réplicas; pareado
 #  para la diferencia entre trienios) con IC 95 % percentil. Estandarización
 #  indirecta por altitud del municipio y edad materna mediante un modelo de
@@ -37,6 +37,9 @@ variantes = [
     ("BPN a término en partos únicos", "pct_term", "n_term", "ses_nc", None),
     ("Ordenamiento: % subsidiado", "pct_bpn", "con_peso", "ses_sub", None),
     ("Ordenamiento: % baja escolaridad", "pct_bpn", "con_peso", "ses_edu", None),
+    # al final: no cambia el índice v (ni las semillas) de las anteriores
+    ("Sin Chocó, La Guajira y Cesar", "pct_bpn", "con_peso", "ses_nc",
+     f"dpto_res not in {cb.DPTOS_FALTANTE_PESO}"),
 ]
 V_PRINCIPAL = 1
 V_ESTAND = 2
@@ -255,7 +258,7 @@ def bootstrap_ic(h: np.ndarray, w: np.ndarray, rango: np.ndarray,
             "se_E": (4 * (mu_b / 100) * C_b).std(ddof=1), "C_b": C_b}
 
 
-# B1. Índices por año, las 10 variantes
+# B1. Índices por año, todas las variantes
 
 def C_anual(panel: pd.DataFrame) -> pd.DataFrame:
     filas = []

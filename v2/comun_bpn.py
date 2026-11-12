@@ -55,6 +55,8 @@ DPTO_NOM = {
     95: "Guaviare",            97: "Vaupés",            99: "Vichada",
 }
 DPTOS_VALIDOS = [c for c in DPTO_NOM if c != 0]
+# Cesar, Chocó y La Guajira: los de mayor faltante de peso en 2018-2021
+DPTOS_FALTANTE_PESO = [20, 27, 44]
 
 PESO_GRUPO_ETQ = {
     1: "<1.000 g", 2: "1.000-1.499", 3: "1.500-1.999", 4: "2.000-2.499",
