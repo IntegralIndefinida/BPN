@@ -9,8 +9,17 @@
 #      con el ajuste de M4, para los dos resultados y por quinquenio; con
 #      cotas extremas para la educación faltante (todas al nivel más bajo o
 #      al más alto) y el % faltante por departamento.
+#   D. Sensibilidad del gradiente: sin ajuste por régimen, con la educación
+#      faltante como categoría y con paridad, etnia y área de residencia.
+#   E. Tendencia del RII (interacción ridit x quinquenio y por década) con
+#      bootstrap wild por departamento, y controles con la semana 37.
 #  No se ajusta por gestación, controles prenatales ni tipo de parto
 #  (mediadores, ver nota técnica del análisis).
+#
+#  "A término" significa siempre 38 semanas y más en partos únicos, con T_GES
+#  (los 20 años). La semana 37 solo se distingue en los años con
+#  T_GES_AGRU_CIE; los resultados que la usan son controles con esos años y
+#  no se mezclan con la serie principal.
 #  Salidas: Objetivo3_Educacion_Regimen_BPN.xlsx, G9, G10 y log.
 
 import numpy as np
@@ -22,25 +31,36 @@ import comun_bpn as cb
 
 EXCEL = "Objetivo3_Educacion_Regimen_BPN.xlsx"
 Z95 = 1.96
+REPS_WILD = 9_999            # réplicas del bootstrap wild
+SEMILLA = 20241
 
 
 # 0. Celdas del objetivo 3
 
-def celdas_obj3(celdas: pd.DataFrame) -> pd.DataFrame:
+def celdas_obj3(celdas: pd.DataFrame, extra: tuple = ()) -> pd.DataFrame:
     """Nacidos con dpto válido, peso y edad conocidos, agrupados por
-    (anio, dpto_res, educ4, regimen, edad6, alt_cat); los faltantes de
-    educ4/régimen/alt_cat pasan a la categoría 9 (se excluyen por modelo).
+    (anio, dpto_res, educ4, regimen, edad6, alt_cat) y las llaves `extra`; los
+    faltantes de educ4/régimen/alt_cat/extra pasan a la categoría 9 (se
+    excluyen por modelo).
     A nivel de celda con exposición, los coeficientes de Poisson y sus errores
     agrupados coinciden con los de los datos individuales (nota técnica)."""
     d = celdas
     d = d[d["dpto_res"].gt(0) & d["con_peso"].gt(0) & d["edad6"].notna()].copy()
-    d["educ4"] = d["educ4"].fillna(9).astype(int)
-    d["regimen"] = d["regimen"].fillna(9).astype(int)
-    d["alt_cat"] = d["alt_cat"].fillna(9).astype(int)
-    return (d.groupby(["anio", "dpto_res", "educ4", "regimen", "edad6", "alt_cat"],
-                      as_index=False, observed=True)
-            .agg(n=("con_peso", "sum"), casos=("bpn_n", "sum"),
-                 n_term=("n_term", "sum"), casos_term=("bpn_term_n", "sum")))
+    for col in ["educ4", "regimen", "alt_cat", *extra]:
+        d[col] = d[col].fillna(9).astype(int)
+    c = (d.groupby(["anio", "dpto_res", "educ4", "regimen", "edad6", "alt_cat", *extra],
+                   as_index=False, observed=True)
+         .agg(n=("con_peso", "sum"), casos=("bpn_n", "sum"),
+              n_term=("n_term", "sum"), casos_term=("bpn_term_n", "sum"),
+              n_gest=("n_gest_u", "sum"), n_sem37=("n_sem37", "sum"),
+              casos_sem37=("bpn_sem37", "sum")))
+    # únicos de 37 semanas y más: solo en los años con T_GES_AGRU_CIE; para
+    # comparar, también los de 38 y más en esos mismos años (_cie)
+    con_cie = c.groupby("anio")["n_gest"].transform("sum") > 0
+    return c.assign(n_term37=(c["n_sem37"] + c["n_term"]).where(con_cie, 0.0),
+                    casos_term37=(c["casos_sem37"] + c["casos_term"]).where(con_cie, 0.0),
+                    n_term_cie=c["n_term"].where(con_cie, 0.0),
+                    casos_term_cie=c["casos_term"].where(con_cie, 0.0))
 
 
 # A. Prevalencia cruda y estandarizada por edad
@@ -184,6 +204,7 @@ def ridit_educacion(celdas: pd.DataFrame) -> pd.DataFrame:
     return tot[["anio", "educ4", "ridit"]]
 
 
+# "A término": 38 semanas y más en partos únicos, con T_GES (los 20 años)
 RESULTADOS = {"BPN": ("casos", "n"),
               "BPN a término (únicos >=38 sem.)": ("casos_term", "n_term")}
 PERIODOS = [(2005, 2024), (2005, 2009), (2010, 2014), (2015, 2019), (2020, 2024)]
@@ -263,6 +284,159 @@ def educacion_faltante(c: pd.DataFrame) -> pd.DataFrame:
                       d], ignore_index=True)
 
 
+# D. Sensibilidad del gradiente educativo
+
+TERMINO = "BPN a término (únicos >=38 sem.)"
+EXTRA = {"paridad3": (cb.PARIDAD3_ETQ, 1), "etnia3": (cb.ETNIA3_ETQ, 3),
+         "area2": (cb.AREA2_ETQ, 1)}          # variable: (etiquetas, referencia)
+
+
+def rp_sensibilidad(celdas: pd.DataFrame, c: pd.DataFrame) -> pd.DataFrame:
+    """Razones de prevalencia por educación con el ajuste de M4 (edad, año,
+    altitud y efectos fijos de departamento), 2008-2024, para BPN y BPN a
+    término:
+      M4s  M4 sin régimen, en la misma muestra que M4. El régimen puede estar
+           en el camino entre la educación y el BPN: que sea mediador es un
+           supuesto, no algo que estos modelos midan.
+      M4f  M4s con la educación faltante como una categoría más.
+      M6a  M4s en la muestra con paridad, etnia y área conocidas (la etnia
+           falta en 2005-2007, 2012 y 2013).
+      M6b  M6a + paridad + etnia + área."""
+    def ajuste(d):
+        return [_dummies(d, "edad6", 2), _dummies(d, "anio", int(d["anio"].min())),
+                _dummies(d, "alt_cat", 1), _dummies(d, "dpto_res", 5)]
+
+    filas = []
+
+    def modelo(nombre, d, niveles=(1, 2, 3), extra=()):
+        X = pd.concat([_dummies(d, "educ4", 4), *ajuste(d),
+                       *[_dummies(d, v, EXTRA[v][1]) for v in extra]], axis=1)
+        for resultado, (y, n) in RESULTADOS.items():
+            k = d[d[n] > 0]
+            b, se, N, G = _ajustar(k, y, X, n)
+            nuevas = _filas(nombre, b, se, cb.EDUC4_ETQ, "educ4", niveles, N, G)
+            for v in extra:
+                etqs = EXTRA[v][0]
+                nuevas += _filas(nombre, b, se, etqs, v,
+                                 [j for j in etqs if j not in (EXTRA[v][1], 9)], N, G)
+            filas.extend({"resultado": resultado, **f} for f in nuevas)
+
+    d = c[(c["anio"] >= 2008) & (c["regimen"] != 9) & (c["alt_cat"] != 9)]
+    modelo("M4s M4 sin régimen", d[d["educ4"] != 9])
+    modelo("M4f M4s con educación faltante como categoría", d, niveles=(1, 2, 3, 9))
+    cx = celdas_obj3(celdas, tuple(EXTRA))
+    dx = cx[(cx["anio"] >= 2008) & (cx["regimen"] != 9) & (cx["alt_cat"] != 9)
+            & (cx["educ4"] != 9) & cx[list(EXTRA)].ne(9).all(axis=1)]
+    modelo("M6a M4s en la muestra con paridad, etnia y área", dx)
+    modelo("M6b M6a + paridad + etnia + área", dx, extra=tuple(EXTRA))
+    return pd.DataFrame(filas)
+
+
+def completitud_anual(celdas: pd.DataFrame) -> pd.DataFrame:
+    """% de nacidos (dpto válido y con peso) sin dato de cada variable, por año."""
+    d = celdas[celdas["dpto_res"].gt(0) & celdas["con_peso"].gt(0)]
+    total = d.groupby("anio")["con_peso"].sum()
+    return pd.DataFrame({
+        f"pct_sin_{nombre}": 100 * d["con_peso"].where(d[col].isna(), 0.0)
+                             .groupby(d["anio"]).sum() / total
+        for col, nombre in [("edad6", "edad"), ("educ4", "educacion"),
+                            ("regimen", "regimen"), ("paridad3", "paridad"),
+                            ("etnia3", "etnia"), ("area2", "area")]}).reset_index()
+
+
+# E. Tendencia del RII
+
+def _p_wild(d: pd.DataFrame, y: str, n: str, X: pd.DataFrame, nulos: list[str],
+            reps: int = REPS_WILD) -> float:
+    """Valor p de H0: los coeficientes `nulos` son cero, por bootstrap wild de
+    los puntajes agrupados por departamento con la nula impuesta (Kline y
+    Santos 2012): se ajusta el modelo sin esos términos y, en cada réplica, se
+    cambia al azar el signo del puntaje de cada departamento (Rademacher) y se
+    recalcula el estadístico de puntaje. Con 33 departamentos, la prueba de
+    Wald con la covarianza agrupada rechaza de más."""
+    X = sm.add_constant(X.astype(float), has_constant="add")
+    yv, off = d[y].to_numpy(float), np.log(d[n].to_numpy(float))
+    mu = sm.GLM(yv, X.drop(columns=nulos), family=sm.families.Poisson(),
+                offset=off).fit().mu
+    Xa = X.to_numpy()
+    puntaje = pd.DataFrame(Xa * (yv - mu)[:, None]).groupby(
+        d["dpto_res"].to_numpy()).sum().to_numpy()             # G x k
+    B = np.linalg.inv(Xa.T @ (Xa * mu[:, None]))[[X.columns.get_loc(v) for v in nulos]]
+    Vinv = np.linalg.inv(B @ puntaje.T @ puntaje @ B.T)
+
+    def estadistico(total):                                    # (réplicas, k)
+        b = total @ B.T
+        return np.einsum("ri,ij,rj->r", b, Vinv, b)
+
+    signos = np.random.default_rng(SEMILLA).choice([-1.0, 1.0],
+                                                   size=(reps, len(puntaje)))
+    obs = estadistico(puntaje.sum(0)[None, :])[0]
+    return (1 + (estadistico(signos @ puntaje) >= obs).sum()) / (reps + 1)
+
+
+# Los dos resultados del RII y cuatro controles con la semana 37 (solo años
+# con T_GES_AGRU_CIE): si la ampliación a término se debiera a quién sale del
+# denominador de 38 semanas y más, no aparecería al contar desde la semana 37.
+RESULTADOS_TEND = {
+    "BPN": ("casos", "n", "Peso < 2.500 g entre los nacidos con peso; 2005-2024"),
+    TERMINO: ("casos_term", "n_term",
+              "Peso < 2.500 g en partos únicos de 38 semanas y más (T_GES); 2005-2024"),
+    "BPN a término, años con T_GES_AGRU_CIE": (
+        "casos_term_cie", "n_term_cie",
+        "Igual que el anterior, solo en los años en que se distingue la semana 37"),
+    "Nacer en la semana 37 (únicos)": (
+        "n_sem37", "n_gest", "Semana 37 entre los partos únicos con T_GES_AGRU_CIE"),
+    "BPN dentro de la semana 37 (únicos)": (
+        "casos_sem37", "n_sem37", "Peso < 2.500 g en partos únicos de la semana 37"),
+    "BPN en únicos de 37 semanas y más": (
+        "casos_term37", "n_term37",
+        "Peso < 2.500 g en partos únicos de 37 semanas y más (T_GES_AGRU_CIE)"),
+}
+
+
+def rii_tendencia(c: pd.DataFrame) -> pd.DataFrame:
+    """¿Se amplía el gradiente educativo? Por resultado, dos Poisson con el
+    ajuste del RII (edad, año, altitud, efectos fijos de departamento):
+    ridit x quinquenio (RII del primer quinquenio y razón de cada uno frente a
+    él, con prueba conjunta) y ridit x década (cuánto se multiplica el RII
+    cada diez años). IC 95 % con la covarianza agrupada y t de G-1 grados de
+    libertad; valores p por bootstrap wild (_p_wild)."""
+    from scipy.stats import t as t_student
+    d0 = c[c["educ4"] != 9].merge(ridit_educacion(c), on=["anio", "educ4"])
+    filas = []
+    for resultado, (y, n, definicion) in RESULTADOS_TEND.items():
+        d = d0[(d0["alt_cat"] != 9) & (d0[n] > 0)]
+        a0 = int(d["anio"].min())
+        base = [_dummies(d, "edad6", 2), _dummies(d, "anio", a0),
+                _dummies(d, "alt_cat", 1), _dummies(d, "dpto_res", 5)]
+        quinq = 1 + (d["anio"] - 2005) // 5
+        q0 = int(quinq.min())
+        inter = pd.DataFrame({f"ridit_q{q}": d["ridit"] * (quinq == q)
+                              for q in sorted(quinq.unique()) if q != q0})
+        decada = (d["ridit"] * (d["anio"] - a0) / 10).rename("ridit_decada")
+        tc = t_student.ppf(0.975, d["dpto_res"].nunique() - 1)
+        anios = f"{a0}-{int(d['anio'].max())} ({d['anio'].nunique()} años)"
+
+        def fila(termino, b, se, p):
+            filas.append({"resultado": resultado, "definicion": definicion,
+                          "anios": anios, "termino": termino, "valor": np.exp(b),
+                          "li": np.exp(b - tc * se), "ls": np.exp(b + tc * se),
+                          "p_wild": p})
+
+        Xq = pd.concat([d["ridit"], inter, *base], axis=1)
+        b, se, _, _ = _ajustar(d, y, Xq, n)
+        etq = {q: f"{2000 + 5 * q}-{2004 + 5 * q}" for q in range(1, 5)}
+        fila(f"RII {etq[q0]}", b["ridit"], se["ridit"], np.nan)
+        p_conj = _p_wild(d, y, n, Xq, list(inter.columns))
+        for col in inter.columns:
+            fila(f"RII {etq[int(col[-1])]} / RII {etq[q0]}", b[col], se[col], p_conj)
+        Xd = pd.concat([d["ridit"], decada, *base], axis=1)
+        b, se, _, _ = _ajustar(d, y, Xd, n)
+        fila("Cambio del RII por década (razón)", b["ridit_decada"], se["ridit_decada"],
+             _p_wild(d, y, n, Xd, ["ridit_decada"]))
+    return pd.DataFrame(filas)
+
+
 # G9/G10. Prevalencia estandarizada por año según educ4 y según régimen
 
 def grafico_estand(agg: pd.DataFrame, var: str, desde: int, titulo: str,
@@ -301,6 +475,9 @@ def calcular(celdas: pd.DataFrame) -> dict:
         "RP_modelos": razones_prevalencia(c),
         "RII_SII_educacion": rii_sii_cotas(c),
         "Educacion_faltante": educacion_faltante(c),
+        "RP_sensibilidad": rp_sensibilidad(celdas, c),
+        "RII_tendencia": rii_tendencia(c),
+        "Completitud_anual": completitud_anual(celdas),
         "_est_educ": estandarizada_anio(c, pesos, "educ4", 2005),
         "_est_reg": estandarizada_anio(c, pesos, "regimen", 2008),
         "_n_celdas": len(c),
@@ -320,6 +497,13 @@ def imprimir(r: dict) -> None:
     print(r["RII_SII_educacion"].round(3).to_string(index=False))
     print("\n--- D. % sin dato de educación (Colombia y 8 dptos con más faltante) ---")
     print(r["Educacion_faltante"].head(9).round(1).to_string(index=False))
+    print("\n--- E. Sensibilidad del gradiente (sin régimen, faltantes, covariables) ---")
+    print(r["RP_sensibilidad"][["resultado", "modelo", "variable", "categoria", "rp",
+                                "li", "ls", "n_obs"]].round(3).to_string(index=False))
+    print("\n--- F. Tendencia del RII (p por bootstrap wild; conjunta en las razones) ---")
+    print(r["RII_tendencia"].drop(columns="definicion").round(4).to_string(index=False))
+    print("\n--- G. % sin dato por año ---")
+    print(r["Completitud_anual"].round(2).to_string(index=False))
 
 
 def graficos(r: dict) -> dict:

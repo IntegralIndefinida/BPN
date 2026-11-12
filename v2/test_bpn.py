@@ -5,6 +5,7 @@
 #  1. ic_vec (fórmula cerrada del bootstrap) == ic_conc (regresión conveniente)
 #  2. _peso_grupo: rama de grupos y rama de gramos
 #  3. _armonizar: definición de BPN y BPN a término sobre datos sintéticos
+#  4. _p_wild: el bootstrap wild distingue un efecto real de ninguno
 
 from pathlib import Path
 from tempfile import TemporaryDirectory
@@ -97,6 +98,22 @@ def test_armonizar():
     assert celdas["altitud_m"].eq(1500).all()
 
 
+def test_p_wild():
+    """Con un efecto real el valor p es chico; sin efecto, no."""
+    from obj3_educacion import _p_wild
+    rng = np.random.default_rng(3)
+    G, m = 30, 60
+    d = pd.DataFrame({"dpto_res": np.repeat(np.arange(G), m),
+                      "x": rng.normal(size=G * m), "z": rng.normal(size=G * m),
+                      "n": 200.0})
+    efecto_dpto = np.repeat(rng.normal(0, 0.2, G), m)
+    for beta, esperado in [(0.0, lambda p: p > 0.05), (0.3, lambda p: p < 0.01)]:
+        mu = d["n"] * np.exp(-2 + 0.2 * d["x"] + beta * d["z"] + efecto_dpto)
+        d["y"] = rng.poisson(mu)
+        p = _p_wild(d, "y", "n", d[["x", "z"]], ["z"], reps=999)
+        assert esperado(p), f"p wild = {p} con beta = {beta}"
+
+
 if __name__ == "__main__":
     test_ic_vec_igual_ic_conc()
     print("ok: ic_vec == ic_conc")
@@ -104,4 +121,6 @@ if __name__ == "__main__":
     print("ok: _peso_grupo (grupos y gramos)")
     test_armonizar()
     print("ok: _armonizar (BPN, término, semana 37, régimen, altitud, llaves)")
+    test_p_wild()
+    print("ok: _p_wild (bootstrap wild por departamento)")
     print("Todas las pruebas pasaron.")
