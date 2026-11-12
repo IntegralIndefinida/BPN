@@ -4,8 +4,10 @@
 #  robusto, también por subconjunto de registros), prevalencia por
 #  departamento, calidad del registro del peso y origen del faltante de peso,
 #  por sexo y distribución del peso, con IC 95 % de Wilson, y descomposición
-#  de la tendencia por semanas de gestación (Kitagawa). 
-#  Salidas: Objetivo1_Evolucion_BPN.xlsx, G1_bpn_nacional.png y el log.
+#  de la tendencia por semanas de gestación (Kitagawa). El bloque C9 mira el
+#  corrimiento hacia 28-37 semanas: pretérmino y semana 37 por separado, en
+#  quién ocurre, prueba con el peso y contraste con las defunciones fetales.
+#  Salidas: Objetivo1_Evolucion_BPN.xlsx, G1 y G12-G15 png y el log.
 
 import numpy as np
 import pandas as pd
@@ -193,13 +195,26 @@ def distribucion_peso() -> pd.DataFrame:
 
 # C8. Semanas de gestación: qué explica la tendencia del BPN
 # Etiquetas de gestacion_grupo de dane-data -> grupos de análisis; el resto
-# (ignorado, sin información) va a "Sin dato". El DANE publica 28-37 semanas
-# juntas: no se puede separar la prematuridad (<37) de la semana 37.
+# (ignorado, sin información) va a "Sin dato". T_GES publica 28-37 semanas
+# juntas; el bloque C9 las separa en los años con T_GES_AGRU_CIE.
 
 _MAP_GEST = {"Menos de 22": "Menos de 28 sem.", "De 22 a 27": "Menos de 28 sem.",
              "De 28 a 37": "28 a 37 sem.", "De 38 a 41": "38 sem. y más",
              "De 42 y más": "38 sem. y más"}
 _ORDEN_GEST = ["Menos de 28 sem.", "28 a 37 sem.", "38 sem. y más", "Sin dato"]
+
+
+def _partes(d: pd.DataFrame, estrato: str) -> pd.DataFrame:
+    """Por año y `estrato`: nacidos con peso, su parte de los nacidos del año,
+    % BPN dentro del estrato y aporte al % BPN del año (los aportes suman la
+    prevalencia del año)."""
+    g = (d.groupby(["anio", estrato], as_index=False, observed=True)
+         [["n", "bpn_n"]].sum().rename(columns={"n": "con_peso"}))
+    total = g.groupby("anio")["con_peso"].transform("sum")
+    g["pct_nacidos"] = 100 * g["con_peso"] / total
+    g["pct_bpn"] = 100 * g["bpn_n"] / g["con_peso"]
+    g["aporte_pp"] = 100 * g["bpn_n"] / total
+    return g
 
 
 def por_gestacion() -> pd.DataFrame:
@@ -213,39 +228,266 @@ def por_gestacion() -> pd.DataFrame:
         gestacion=pd.Categorical(d["gestacion_grupo"].astype(object).map(_MAP_GEST)
                                  .fillna("Sin dato"), _ORDEN_GEST),
         bpn_n=d["n"].where(d["bajo_peso"].astype(bool), 0))
-    g = (d.groupby(["anio", "gestacion"], as_index=False, observed=True)
-         [["n", "bpn_n"]].sum().rename(columns={"n": "con_peso"}))
-    total = g.groupby("anio")["con_peso"].transform("sum")
-    g["pct_nacidos"] = 100 * g["con_peso"] / total
-    g["pct_bpn"] = 100 * g["bpn_n"] / g["con_peso"]
-    g["aporte_pp"] = 100 * g["bpn_n"] / total
-    return g
+    return _partes(d, "gestacion")
+
+
+def _kitagawa(g: pd.DataFrame, estrato: str, a0: int, a1: int,
+              parte: str = "pct_nacidos", tasa: str = "pct_bpn") -> pd.DataFrame:
+    """Descomposición de Kitagawa del cambio, entre a0 y a1, de una tasa global
+    (la suma de parte x tasa de los estratos): cuánto se debe a que cambió la
+    composición por `estrato` y cuánto a que cambió la tasa dentro de cada
+    estrato (en puntos porcentuales)."""
+    t = g[g["anio"].isin([a0, a1])].pivot(index=estrato, columns="anio",
+                                          values=[parte, tasa])
+    s0, s1 = t[parte][a0].fillna(0) / 100, t[parte][a1].fillna(0) / 100
+    # un estrato vacío en uno de los dos años toma la tasa del otro
+    p0, p1 = t[tasa][a0].fillna(t[tasa][a1]), t[tasa][a1].fillna(t[tasa][a0])
+    d = pd.DataFrame({
+        f"{parte}_ini": 100 * s0, f"{parte}_fin": 100 * s1,
+        f"{tasa}_ini": p0, f"{tasa}_fin": p1,
+        "efecto_composicion_pp": (s1 - s0) * (p0 + p1) / 2,
+        "efecto_tasas_pp": (p1 - p0) * (s0 + s1) / 2}).reset_index()
+    d[estrato] = d[estrato].astype(str)
+    total = d.drop(columns=estrato).sum()
+    total[f"{tasa}_ini"], total[f"{tasa}_fin"] = (s0 * p0).sum(), (s1 * p1).sum()
+    d = pd.concat([d, pd.DataFrame([{estrato: "Total", **total}])],
+                  ignore_index=True)
+    d["cambio_pp"] = d["efecto_composicion_pp"] + d["efecto_tasas_pp"]
+    fin = d.iloc[-1]
+    assert np.isclose(fin["cambio_pp"], fin[f"{tasa}_fin"] - fin[f"{tasa}_ini"]), \
+        "la descomposición no suma el cambio observado"
+    d.insert(0, "periodo", f"{a0} a {a1}")
+    return d
 
 
 def descomposicion_gestacion(g: pd.DataFrame, a0: int = cb.ANIO_INI,
                              a1: int = cb.ANIO_FIN) -> pd.DataFrame:
-    """Descomposición de Kitagawa del cambio del % BPN entre a0 y a1: cuánto se
-    debe a que cambió la composición por semanas de gestación y cuánto a que
-    cambió el BPN dentro de cada grupo (en puntos porcentuales)."""
-    t = g.pivot(index="gestacion", columns="anio", values=["pct_nacidos", "pct_bpn"])
-    s0, s1 = t["pct_nacidos"][a0] / 100, t["pct_nacidos"][a1] / 100
-    p0, p1 = t["pct_bpn"][a0], t["pct_bpn"][a1]
+    """Kitagawa del cambio del % BPN entre a0 y a1 por semanas de gestación."""
+    return _kitagawa(g, "gestacion", a0, a1)
+
+
+# C9. El corrimiento hacia 28-37 semanas: en qué semanas y en quién ocurre
+# T_GES agrupa 28-37 semanas. T_GES_AGRU_CIE (`prematuro` en dane-data) separa
+# las <37, pero falta en 2005-2007, 2012, 2013 y 2020: en los demás años las dos
+# juntas separan el pretérmino (28-36) de la semana 37.
+# Base de todo el bloque: nacidos con peso y gestación conocidos.
+
+ANIOS_CIE = [a for a in range(2008, cb.ANIO_FIN + 1) if a not in (2012, 2013, 2020)]
+_ORDEN_FINA = ["Menos de 28 sem.", "28 a 36 sem.", "37 sem.", "28 a 37 sem.",
+               "38 sem. y más"]
+SUBCONJ_PARTO = {
+    "Todos": None,
+    "Partos únicos": "pluralidad == 'Único'",
+    # sin la vía de documentación de las cesáreas
+    "Únicos vaginales": "pluralidad == 'Único' and parto == 'Vaginal'",
+    "Únicos por cesárea": "pluralidad == 'Único' and parto == 'Cesárea'",
+}
+FACTORES = {"parto": "Tipo de parto", "paridad": "Paridad", "educacion": "Educación",
+            "regimen": "Régimen", "departamento": "Departamento"}
+# (resultado, columna de conteo, año inicial): 28-37 existe en toda la serie
+RESULTADOS_GEST = [("28 a 37 sem.", "n_2837", cb.ANIO_INI),
+                   ("28 a 36 sem.", "n_2836", ANIOS_CIE[0]),
+                   ("37 sem.", "n_37", ANIOS_CIE[0])]
+
+
+def tabla_parto() -> pd.DataFrame:
+    """Nacidos con peso y gestación conocidos por año, semanas, grupo de peso
+    y los factores del parto y de la madre (una sola tabulación). Los
+    faltantes de cada factor quedan como NaN: cada tabla los excluye de forma
+    explícita y reporta su porcentaje."""
+    d = cb.conteos(["gestacion_grupo", "prematuro", "peso_grupo", "cesarea",
+                    "parto_multiple", "hijos_nacidos_vivos", "nivel_educativo_madre",
+                    "regimen_salud", "dpto_residencia"],
+                   list(range(cb.ANIO_INI, cb.ANIO_FIN + 1)), dropna=False)
+    obj = lambda c: d[c].astype(object)
+    gest3 = obj("gestacion_grupo").map(_MAP_GEST)
+    fina = gest3.mask(gest3.eq("28 a 37 sem.") & obj("prematuro").eq(True), "28 a 36 sem.")
+    fina = fina.mask(gest3.eq("28 a 37 sem.") & obj("prematuro").eq(False), "37 sem.")
+    dpto = d["dpto_residencia"].astype("float")
     d = pd.DataFrame({
-        "pct_nacidos_ini": 100 * s0, "pct_nacidos_fin": 100 * s1,
-        "pct_bpn_ini": p0, "pct_bpn_fin": p1,
-        "efecto_composicion_pp": (s1 - s0) * (p0 + p1) / 2,
-        "efecto_tasas_pp": (p1 - p0) * (s0 + s1) / 2}).reset_index()
-    d["gestacion"] = d["gestacion"].astype(str)
-    total = d.drop(columns="gestacion").sum()
-    total["pct_bpn_ini"], total["pct_bpn_fin"] = (s0 * p0).sum(), (s1 * p1).sum()
-    d = pd.concat([d, pd.DataFrame([{"gestacion": "Total", **total}])],
-                  ignore_index=True)
-    d["cambio_pp"] = d["efecto_composicion_pp"] + d["efecto_tasas_pp"]
-    fin = d.iloc[-1]
-    assert np.isclose(fin["cambio_pp"], fin["pct_bpn_fin"] - fin["pct_bpn_ini"]), \
-        "la descomposición no suma el cambio observado"
-    d.insert(0, "periodo", f"{a0} a {a1}")
-    return d
+        "anio": d["anio"], "gest3": gest3,
+        "gest": pd.Categorical(fina, _ORDEN_FINA),
+        "peso": obj("peso_grupo").map(_MAP_PESO),
+        "parto": obj("cesarea").map({True: "Cesárea", False: "Vaginal"}),
+        "pluralidad": obj("parto_multiple").map({True: "Múltiple", False: "Único"}),
+        "paridad": pd.cut(d["hijos_nacidos_vivos"].astype("float"), [0, 1, 2, np.inf],
+                          labels=["1", "2", "3 o más"]).astype(object),
+        "educacion": obj("nivel_educativo_madre").map(cb._MAP_EDUC4).map(cb.EDUC4_ETQ),
+        # el régimen solo es comparable desde 2008
+        "regimen": obj("regimen_salud").map(cb._MAP_REGIMEN).map(cb.REGIMEN_ETQ)
+                   .where(d["anio"] >= 2008),
+        "departamento": dpto.where(dpto.isin(cb.DPTOS_VALIDOS)).map(cb.DPTO_NOM),
+        "n": d["n"]})
+    d = d[d["peso"].notna() & d["gest3"].notna()]
+    llaves = [c for c in d.columns if c != "n"]
+    d = d.groupby(llaves, as_index=False, observed=True, dropna=False)["n"].sum()
+    en_cie = d["anio"].isin(ANIOS_CIE)
+    return d.assign(
+        bpn_n=d["n"].where(d["peso"] <= 4, 0),
+        n_2837=d["n"].where(d["gest3"].eq("28 a 37 sem."), 0),
+        # sin T_GES_AGRU_CIE no se sabe: NaN, no cero
+        n_2836=d["n"].where(d["gest"].eq("28 a 36 sem."), 0).where(en_cie),
+        n_37=d["n"].where(d["gest"].eq("37 sem."), 0).where(en_cie))
+
+
+def _subconjuntos(tp: pd.DataFrame, nombres=SUBCONJ_PARTO):
+    for nombre in nombres:
+        cond = SUBCONJ_PARTO[nombre]
+        yield nombre, (tp.query(cond) if cond else tp)
+
+
+def gestacion_fina(tp: pd.DataFrame) -> pd.DataFrame:
+    """Parte de los nacidos, % BPN y aporte al BPN por semanas de gestación
+    (28-36 y 37 separadas en los años con T_GES_AGRU_CIE), en todos los
+    nacidos y en los subconjuntos de SUBCONJ_PARTO."""
+    partes = [_partes(d, "gest").rename(columns={"gest": "gestacion"})
+              .assign(subconjunto=nombre) for nombre, d in _subconjuntos(tp)]
+    d = pd.concat(partes, ignore_index=True)
+    return d[["subconjunto", *[c for c in d.columns if c != "subconjunto"]]]
+
+
+def descomp_gestacion_conocida(tp: pd.DataFrame, fina: pd.DataFrame) -> pd.DataFrame:
+    """Kitagawa del % BPN por semanas de gestación entre los nacidos con
+    gestación conocida, por subconjunto: con 28-36 y 37 separadas (periodos
+    entre años con T_GES_AGRU_CIE) y con 28-37 juntas desde 2005."""
+    partes = []
+    for nombre, d in _subconjuntos(tp):
+        g = fina[fina["subconjunto"].eq(nombre)]
+        g3 = _partes(d, "gest3").rename(columns={"gest3": "gestacion"})
+        for tabla, periodos in [(g, [(2008, 2024), (2008, 2021), (2021, 2024)]),
+                                (g3, [(2005, 2024), (2005, 2021)])]:
+            partes += [_kitagawa(tabla, "gestacion", a0, a1).assign(subconjunto=nombre)
+                       for a0, a1 in periodos]
+    d = pd.concat(partes, ignore_index=True)
+    return d[["subconjunto", *[c for c in d.columns if c != "subconjunto"]]]
+
+
+# Criterio de decisión (fijado antes de ver los resultados por semana): ¿los
+# nacimientos que se añadieron a un grupo de semanas pesan como los de ese
+# grupo o como los nacidos a término? similitud = 1: como el grupo; 0: como
+# los de 38 semanas y más.
+SIMILITUD_GRUPO, SIMILITUD_TERMINO = 0.75, 0.25
+CORRIMIENTO_MIN = 1.0      # pp; con menos, el peso de los añadidos es inestable
+
+
+def prueba_peso(tp: pd.DataFrame) -> pd.DataFrame:
+    """% BPN implícito de los nacimientos añadidos a cada grupo de semanas,
+    (s1·p1 - s0·p0) / (s1 - s0), y su similitud con el grupo (año inicial)
+    frente a los nacidos a término. Si se hubieran reclasificado nacidos a
+    término de peso normal, o el grupo solo se hubiera diluido con ellos, los
+    añadidos pesarían como los de término (similitud <= 0,25); con similitud
+    >= 0,75 los añadidos son tan pequeños como el grupo: nacieron antes o se
+    reclasificaron justo los pequeños (el peso solo no separa esas dos)."""
+    filas = []
+    for nombre, d in _subconjuntos(tp, ["Todos", "Únicos vaginales"]):
+        for col, grupo, a0, a1 in [("gest3", "28 a 37 sem.", 2005, 2024),
+                                   ("gest", "28 a 36 sem.", 2008, 2024),
+                                   ("gest", "37 sem.", 2008, 2024),
+                                   ("gest", "28 a 36 sem.", 2021, 2024),
+                                   ("gest", "37 sem.", 2021, 2024)]:
+            g = _partes(d, col).set_index(["anio", col])
+            s0, s1 = g.loc[(a0, grupo), "pct_nacidos"], g.loc[(a1, grupo), "pct_nacidos"]
+            p0, p1 = g.loc[(a0, grupo), "pct_bpn"], g.loc[(a1, grupo), "pct_bpn"]
+            termino = g.loc[(a0, "38 sem. y más"), "pct_bpn"]
+            hay = s1 - s0 >= CORRIMIENTO_MIN
+            anadidos = (s1 * p1 - s0 * p0) / (s1 - s0) if hay else np.nan
+            similitud = (anadidos - termino) / (p0 - termino)
+            # banda de 2.500-2.999 g dentro del grupo: sube si entran pesos normales
+            k = d[d[col].eq(grupo)]
+            banda = (100 * k[k["peso"].eq(5)].groupby("anio")["n"].sum()
+                     / k.groupby("anio")["n"].sum())
+            filas.append({
+                "subconjunto": nombre, "grupo": grupo, "periodo": f"{a0} a {a1}",
+                "pct_nacidos_ini": s0, "pct_nacidos_fin": s1,
+                "pct_bpn_ini": p0, "pct_bpn_fin": p1, "pct_bpn_termino_ini": termino,
+                "pct_bpn_anadidos": anadidos, "similitud_grupo": similitud,
+                "pct_2500_2999_ini": banda[a0], "pct_2500_2999_fin": banda[a1],
+                "lectura": ("Sin corrimiento" if not hay else
+                            "Tan pequeños como el grupo o más"
+                            if similitud >= SIMILITUD_GRUPO else
+                            "Como a término" if similitud <= SIMILITUD_TERMINO
+                            else "Mixto")})
+    return pd.DataFrame(filas)
+
+
+def gestacion_factores(tp: pd.DataFrame) -> pd.DataFrame:
+    """Por año y categoría de cada factor: % de nacidos a 28-37, 28-36 y 37
+    semanas y % BPN. Los factores se miran en partos únicos (cesárea, parto
+    múltiple y pretérmino van acoplados); la pluralidad, en todos. Se excluyen
+    los registros sin dato del factor: pct_sin_dato dice cuántos son."""
+    unicos = tp.query(SUBCONJ_PARTO["Partos únicos"])
+    cuentas = ["n", "bpn_n", "n_2837", "n_2836", "n_37"]
+    partes = []
+    for col, etq, base in [("pluralidad", "Pluralidad", tp),
+                           *[(c, e, unicos) for c, e in FACTORES.items()]]:
+        g = (base[base[col].notna()].groupby(["anio", col], observed=True)[cuentas]
+             .sum(min_count=1).rename_axis(["anio", "categoria"]).reset_index())
+        sin = 100 * (1 - g.groupby("anio")["n"].sum() / base.groupby("anio")["n"].sum())
+        g.insert(0, "factor", etq)
+        g["pct_sin_dato"] = g["anio"].map(sin)
+        partes.append(g)
+    d = pd.concat(partes, ignore_index=True)
+    for cuenta, pct in [("n_2837", "pct_2837"), ("n_2836", "pct_2836"),
+                        ("n_37", "pct_37"), ("bpn_n", "pct_bpn")]:
+        d[pct] = 100 * d[cuenta] / d["n"]
+    return d.drop(columns=["n_2837", "n_2836", "n_37"])
+
+
+def descomp_corrimiento(tp: pd.DataFrame) -> pd.DataFrame:
+    """Kitagawa del cambio en la parte de partos únicos a 28-37, 28-36 y 37
+    semanas, por cada factor: cuánto se debe a que cambió el peso de sus
+    categorías (composición) y cuánto a que la parte subió dentro de ellas.
+    Las descomposiciones por factor no se suman entre sí (los factores se
+    traslapan); "Conjunto" cruza tipo de parto, paridad y educación."""
+    unicos = tp.query(SUBCONJ_PARTO["Partos únicos"])
+    # NaN si falta alguno de los tres
+    unicos = unicos.assign(conjunto=unicos["parto"] + " | " + unicos["paridad"]
+                           + " | " + unicos["educacion"])
+    filas = []
+    for col, etq in [*FACTORES.items(), ("conjunto", "Conjunto")]:
+        con = unicos[unicos[col].notna()]
+        g = con.groupby(["anio", col], as_index=False, observed=True)[
+            ["n", "n_2837", "n_2836", "n_37"]].sum(min_count=1)
+        g["pct_nacidos"] = 100 * g["n"] / g.groupby("anio")["n"].transform("sum")
+        for resultado, cuenta, a0 in RESULTADOS_GEST:
+            a0 = max(a0, int(con["anio"].min()))        # régimen: desde 2008
+            t = _kitagawa(g.assign(tasa=100 * g[cuenta] / g["n"]), col, a0,
+                          cb.ANIO_FIN, tasa="tasa").iloc[-1]
+            filas.append({
+                "resultado": resultado, "factor": etq, "periodo": t["periodo"],
+                "pct_ini": t["tasa_ini"], "pct_fin": t["tasa_fin"],
+                "cambio_pp": t["cambio_pp"],
+                "efecto_composicion_pp": t["efecto_composicion_pp"],
+                "efecto_dentro_pp": t["efecto_tasas_pp"],
+                "pct_por_composicion": 100 * t["efecto_composicion_pp"] / t["cambio_pp"]})
+    return pd.DataFrame(filas)
+
+
+def fetales_gestacion(tp: pd.DataFrame) -> pd.DataFrame:
+    """Defunciones fetales de 28 semanas y más por año, frente a los nacidos
+    vivos de esas semanas: si el aumento de nacidos vivos antes de término
+    viniera de registrar como vivos los que antes eran muertes fetales, las
+    fetales caerían en una cantidad parecida. Antes de 2008 las fetales no
+    separan 28-37 de 38 y más."""
+    f = cb.dd.eevv.serie_conteos(list(range(cb.ANIO_INI, cb.ANIO_FIN + 1)),
+                                 tipo="fetales", por=["gestacion_grupo"], dropna=False)
+    g = f["gestacion_grupo"].astype(object)
+    grupo = np.select([g.eq("De 28 a 37"), g.isin(["De 38 a 41", "De 42 y más"]),
+                       g.eq("De 28 y más"), g.isin(["Menos de 22", "De 22 a 27"])],
+                      ["fetales_28_37", "fetales_38_mas", "fetales_28_mas_sin_separar",
+                       "fetales_menos_28"], "fetales_sin_dato")
+    d = (f.groupby(["anio", grupo])["n"].sum().unstack(fill_value=0)
+         .rename_axis(columns=None))
+    d["fetales_28_mas"] = d[["fetales_28_37", "fetales_38_mas",
+                             "fetales_28_mas_sin_separar"]].sum(axis=1)
+    vivos = tp[tp["gest3"].ne("Menos de 28 sem.")].groupby("anio")[["n", "n_2837"]].sum()
+    d["vivos_28_mas"], d["vivos_28_37"] = vivos["n"], vivos["n_2837"]
+    d["fetales_28_mas_por_mil"] = 1000 * d["fetales_28_mas"] / (d["fetales_28_mas"]
+                                                                + d["vivos_28_mas"])
+    d["fetales_28_37_por_mil"] = (1000 * d["fetales_28_37"]
+                                  / (d["fetales_28_37"] + d["vivos_28_37"])
+                                  ).where(d["fetales_28_mas_sin_separar"].eq(0))
+    return d.reset_index()
 
 # G1. Cruda con IC 95 % y estandarizada por edad
 
@@ -339,6 +581,46 @@ def grafico_distribucion(dist: pd.DataFrame):
     return fig
 
 
+# G15. Nacidos antes de las 38 semanas: pretérmino (28-36) y semana 37
+
+def grafico_semanas(fina: pd.DataFrame):
+    import matplotlib.pyplot as plt
+    anios = range(cb.ANIO_INI, cb.ANIO_FIN + 1)
+    fig, ejes = plt.subplots(1, 2, figsize=(10, 4.8), sharey=True)
+
+    def serie(sub, grupos):                  # años sin dato: la línea se corta
+        d = fina[fina["subconjunto"].eq(sub) & fina["gestacion"].isin(grupos)]
+        return d.groupby("anio")["pct_nacidos"].sum().reindex(anios)
+
+    todas = serie("Todos", ["28 a 36 sem.", "37 sem.", "28 a 37 sem."])
+    ejes[0].plot(todas.index, todas, color="#666666", ls="--", lw=1.8,
+                 label="28 a 37 semanas")
+    for grupo, color in [("37 sem.", "#A63603"), ("28 a 36 sem.", "#08306B")]:
+        d = serie("Todos", [grupo])
+        ejes[0].plot(d.index, d, color=color, marker="o", ms=4, lw=2,
+                     label="Semana 37" if grupo == "37 sem." else "28 a 36 semanas")
+    ejes[0].set_title("Todos los nacidos", fontsize=10.5)
+    ejes[0].set_ylabel("% de nacidos vivos")
+    for sub, color, trazo in [("Únicos por cesárea", "#A63603", "-"),
+                              ("Únicos vaginales", "#08306B", "--")]:
+        d = serie(sub, ["37 sem."])
+        ejes[1].plot(d.index, d, color=color, ls=trazo, marker="o", ms=4, lw=2,
+                     label=sub)
+    ejes[1].set_title("Semana 37 en partos únicos, según tipo de parto", fontsize=10.5)
+    for ax in ejes:
+        ax.set_xticks(range(2005, 2025, 3))
+        ax.set_ylim(bottom=0)
+        ax.legend(loc="upper left", fontsize=8.5)
+    fig.suptitle("Nacimientos antes de las 38 semanas de gestación, 2005-2024",
+                 fontsize=12)
+    fig.text(0.01, 0.005,
+             "Nacidos con peso y gestación conocidos. La semana 37 solo se separa en "
+             "los años con T_GES_AGRU_CIE (faltan 2005-2007, 2012, 2013 y 2020).\n"
+             + FUENTE, fontsize=7)
+    fig.tight_layout(rect=(0, 0.05, 1, 1))
+    return fig
+
+
 # Interfaz del módulo: calcular -> imprimir / graficos (ver correr.py)
 
 LOG = "log_01_base_objetivo1"
@@ -348,6 +630,8 @@ def calcular(celdas: pd.DataFrame) -> dict:
     """Tablas del objetivo 1; cada clave es una hoja del xlsx."""
     largo = departamento_largo(celdas)
     gest = por_gestacion()
+    tp = tabla_parto()
+    fina = gestacion_fina(tp)
     return {
         "Nacional": nacional_anio(celdas),
         "Nacional_estandarizada": nacional_estandarizada(celdas),
@@ -360,6 +644,12 @@ def calcular(celdas: pd.DataFrame) -> dict:
         "Distribucion_peso": distribucion_peso(),
         "Gestacion": gest,
         "Descomposicion_gestacion": descomposicion_gestacion(gest),
+        "Gestacion_fina": fina,
+        "Descomp_gestacion_conocida": descomp_gestacion_conocida(tp, fina),
+        "Prueba_peso_gestacion": prueba_peso(tp),
+        "Gestacion_factores": gestacion_factores(tp),
+        "Descomp_corrimiento": descomp_corrimiento(tp),
+        "Fetales_gestacion": fetales_gestacion(tp),
         "Control_carga": pd.read_csv(cb.PROCESADOS / "control_carga.csv"),
     }
 
@@ -391,6 +681,23 @@ def imprimir(r: dict) -> None:
     print(r["Distribucion_peso"].round(2).to_string(index=False))
     print("\n--- C8. Descomposición del cambio del BPN por semanas de gestación ---")
     print(r["Descomposicion_gestacion"].round(2).to_string(index=False))
+    print("\n--- C9. Corrimiento hacia 28-37 semanas (peso y gestación conocidos) ---")
+    fina = r["Gestacion_fina"]
+    print("% de nacidos por semanas (todos):")
+    print(fina[fina["subconjunto"].eq("Todos")]
+          .pivot(index="anio", columns="gestacion", values="pct_nacidos")
+          .round(1).to_string())
+    dg = r["Descomp_gestacion_conocida"]
+    print("\nKitagawa del % BPN por semanas (totales):")
+    print(dg[dg["gestacion"].eq("Total")][
+        ["subconjunto", "periodo", "pct_bpn_ini", "pct_bpn_fin", "cambio_pp",
+         "efecto_composicion_pp", "efecto_tasas_pp"]].round(2).to_string(index=False))
+    print("\nPrueba del peso de los nacimientos añadidos a cada grupo:")
+    print(r["Prueba_peso_gestacion"].round(2).to_string(index=False))
+    print("\nKitagawa del corrimiento por factor (partos únicos):")
+    print(r["Descomp_corrimiento"].round(2).to_string(index=False))
+    print("\nDefunciones fetales de 28 semanas y más:")
+    print(r["Fetales_gestacion"].round(2).to_string(index=False))
 
 
 def graficos(r: dict) -> dict:
@@ -398,4 +705,5 @@ def graficos(r: dict) -> dict:
     return {"G1_bpn_nacional": grafico_g1(r["Nacional"], r["Nacional_estandarizada"]),
             "G12_mapa_calor_departamentos": grafico_mapa_calor(r["Departamento_%BPN"]),
             "G13_bpn_por_sexo": grafico_sexo(r["Sexo"]),
-            "G14_distribucion_peso": grafico_distribucion(r["Distribucion_peso"])}
+            "G14_distribucion_peso": grafico_distribucion(r["Distribucion_peso"]),
+            "G15_semanas_gestacion": grafico_semanas(r["Gestacion_fina"])}

@@ -2,7 +2,7 @@
 
 Análisis de bajo peso al nacer (BPN) con microdatos de nacimientos de las
 Estadísticas Vitales del DANE. Los scripts producen las salidas del análisis
-(xlsx por objetivo, gráficos G1–G14 y logs), leyendo los datos con `dane-data`.
+(xlsx por objetivo, gráficos G1–G15 y logs), leyendo los datos con `dane-data`.
 
 ## Requisitos
 
@@ -46,7 +46,7 @@ Ningún módulo escribe archivos por su cuenta: eso lo hace `correr.py`.
 | `correr.py` | corre los objetivos y guarda log, xlsx y png |
 | `sintesis.ipynb` | síntesis del análisis: recalcula y muestra tablas y gráficos |
 | `comun_bpn.py` | rutas, etiquetas, carga con `dd.eevv`, celdas de conteos, imputación de altitud, caché, helpers (Wilson, APC Poisson, Excel, gráficos, log) |
-| `obj1_evolucion.py` | prevalencia nacional (cruda y estandarizada), APC (nacional y por subconjunto de registros: con residencia conocida, sin Chocó, La Guajira y Cesar), departamentos, calidad del registro del peso y origen del faltante (hoja `Faltante_peso_origen`), sexo, distribución del peso, descomposición de la tendencia por semanas de gestación (Kitagawa), G1 y G12–G14 |
+| `obj1_evolucion.py` | prevalencia nacional (cruda y estandarizada), APC (nacional y por subconjunto de registros: con residencia conocida, sin Chocó, La Guajira y Cesar), departamentos, calidad del registro del peso y origen del faltante (hoja `Faltante_peso_origen`), sexo, distribución del peso, descomposición de la tendencia por semanas de gestación (Kitagawa), corrimiento hacia 28-37 semanas (pretérmino y semana 37 por separado, por tipo de parto, paridad, educación, régimen y departamento, prueba con el peso y defunciones fetales), G1 y G12–G15 |
 | `obj2_desigualdades.py` | RP/DP por quinquenio y año frente a la referencia elegible, Theil/MLD, PAR/PAF, extremos, todo en versión cruda y ajustada por altitud y edad (hojas `_aj`), con IC 95 %; G7/G8 comparan las dos versiones |
 | `obj3_educacion.py` | prevalencias por educación y régimen, Poisson M0–M5 con errores cluster dpto (principal: M4, con altitud y efectos fijos de departamento; M5 = M4 con BPN a término), RII/SII con ese ajuste por quinquenio y cotas extremas por educación faltante, G9/G10 |
 | `obj4_concentracion.py` | estandarización indirecta por altitud y edad, índices C/W/E por regresión conveniente (Kakwani), 11 variantes (una sin Chocó, La Guajira y Cesar), bootstrap por departamento, trienios 2008-2010 vs 2022-2024 y vs 2019-2021 (antes del quiebre de registro de 2022) con bootstrap pareado, curvas G3–G6/G11, G2 |
@@ -75,7 +75,7 @@ Ningún módulo escribe archivos por su cuenta: eso lo hace `correr.py`.
 - `Objetivo1_Evolucion_BPN.xlsx`, `Objetivo2_Desigualdades_RT_DT.xlsx`,
   `Objetivo3_Educacion_Regimen_BPN.xlsx`,
   `Objetivo4_Indice_Concentracion_BPN.xlsx`
-- `G1`…`G14` (PNG, 300 dpi) y `log_01…log_04` (log de cada corrida,
+- `G1`…`G15` (PNG, 300 dpi) y `log_01…log_04` (log de cada corrida,
   mismo contenido que la consola).
 
 ## Notas metodológicas
@@ -92,6 +92,9 @@ Ningún módulo escribe archivos por su cuenta: eso lo hace `correr.py`.
   **percentil**: las réplicas son bimodales (C ≈ 0,03 cuando Bogotá no sale en la muestra y
   0,08–0,12 cuando sale), así que estimación ± 1,96·EE no las describe.
 - El régimen de afiliación solo es comparable desde 2008 (objetivos 3 y 4).
+- Semanas de gestación: `T_GES` agrupa 28-37 semanas. La semana 37 se separa
+  del pretérmino (28-36) cruzándola con `T_GES_AGRU_CIE` (`prematuro` en
+  `dane-data`), que falta en 2005-2007, 2012, 2013 y 2020.
 - La validación del ordenamiento contra NBI/IPM (hoja `Validacion_proxy`) se
   omite con un aviso si no existe la plantilla
   `3.0 Datos/nbi_ipm_departamentos.csv`.
