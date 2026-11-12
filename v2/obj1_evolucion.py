@@ -410,6 +410,29 @@ def prueba_peso(tp: pd.DataFrame) -> pd.DataFrame:
     return pd.DataFrame(filas)
 
 
+def validacion_semana37(tp: pd.DataFrame) -> pd.DataFrame:
+    """Semana 37 frente a 38 semanas y más, por año con T_GES_AGRU_CIE: parte
+    de los nacidos, razón entre las dos y peso dentro de cada una (% BPN, %
+    de 2.500-2.999 g y % de 3.500 g o más). Si nacidos de 38 semanas pasaran
+    a anotarse en la 37, la razón saltaría y la semana 37 se haría más pesada."""
+    d = tp[tp["gest"].isin(["37 sem.", "38 sem. y más"]) & tp["anio"].isin(ANIOS_CIE)]
+    d = d.assign(n_2500=d["n"].where(d["peso"].eq(5), 0),
+                 n_3500=d["n"].where(d["peso"].ge(7), 0))
+    g = (d.groupby(["anio", "gest"], observed=True)[["n", "bpn_n", "n_2500", "n_3500"]]
+         .sum())
+    total = tp[tp["anio"].isin(ANIOS_CIE)].groupby("anio")["n"].sum()
+    partes = {}
+    for grupo, suf in [("37 sem.", "37"), ("38 sem. y más", "38mas")]:
+        k = g.xs(grupo, level="gest")
+        partes[f"pct_nacidos_{suf}"] = 100 * k["n"] / total
+        partes[f"pct_bpn_{suf}"] = 100 * k["bpn_n"] / k["n"]
+        partes[f"pct_2500_2999_{suf}"] = 100 * k["n_2500"] / k["n"]
+        partes[f"pct_3500_mas_{suf}"] = 100 * k["n_3500"] / k["n"]
+    v = pd.DataFrame(partes)
+    v.insert(2, "razon_37_38mas", v["pct_nacidos_37"] / v["pct_nacidos_38mas"])
+    return v.reset_index()
+
+
 def gestacion_factores(tp: pd.DataFrame) -> pd.DataFrame:
     """Por año y categoría de cada factor: % de nacidos a 28-37, 28-36 y 37
     semanas y % BPN. Los factores se miran en partos únicos (cesárea, parto
@@ -647,6 +670,7 @@ def calcular(celdas: pd.DataFrame) -> dict:
         "Gestacion_fina": fina,
         "Descomp_gestacion_conocida": descomp_gestacion_conocida(tp, fina),
         "Prueba_peso_gestacion": prueba_peso(tp),
+        "Semana37_validacion": validacion_semana37(tp),
         "Gestacion_factores": gestacion_factores(tp),
         "Descomp_corrimiento": descomp_corrimiento(tp),
         "Fetales_gestacion": fetales_gestacion(tp),
@@ -694,6 +718,8 @@ def imprimir(r: dict) -> None:
          "efecto_composicion_pp", "efecto_tasas_pp"]].round(2).to_string(index=False))
     print("\nPrueba del peso de los nacimientos añadidos a cada grupo:")
     print(r["Prueba_peso_gestacion"].round(2).to_string(index=False))
+    print("\nSemana 37 frente a 38 semanas y más, por año:")
+    print(r["Semana37_validacion"].round(2).to_string(index=False))
     print("\nKitagawa del corrimiento por factor (partos únicos):")
     print(r["Descomp_corrimiento"].round(2).to_string(index=False))
     print("\nDefunciones fetales de 28 semanas y más:")
