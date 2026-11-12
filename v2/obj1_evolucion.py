@@ -1,7 +1,8 @@
 #  Parte A/B (base y variables armonizadas) la hace comun_bpn.cargar_celdas.
 #  Aquí va la Objetivo 1: Objetivo 1 - evolución y distribución del
 #  BPN: prevalencia nacional (cruda y estandarizada por edad), APC (Poisson
-#  robusto), prevalencia por departamento, calidad del registro del peso,
+#  robusto, también por subconjunto de registros), prevalencia por
+#  departamento, calidad del registro del peso y origen del faltante de peso,
 #  por sexo y distribución del peso, con IC 95 % de Wilson, y descomposición
 #  de la tendencia por semanas de gestación (Kitagawa). 
 #  Salidas: Objetivo1_Evolucion_BPN.xlsx, G1_bpn_nacional.png y el log.
@@ -53,15 +54,28 @@ def nacional_estandarizada(celdas: pd.DataFrame) -> pd.DataFrame:
 
 # C3. Cambio porcentual anual (APC), nacional y por departamento
 
+# Subconjuntos nacionales de registros: separan el quiebre de registro de la
+# tendencia (desde 2022 el faltante de peso está en los registros sin
+# departamento de residencia, dpto_res = 0)
+SUBCONJUNTOS = {
+    "Colombia": None,
+    "Con residencia conocida": "dpto_res > 0",
+    "Con residencia, sin Chocó, La Guajira y Cesar":
+        f"dpto_res > 0 and dpto_res not in {cb.DPTOS_FALTANTE_PESO}",
+}
+
+
 def apc(celdas: pd.DataFrame) -> pd.DataFrame:
-    por_anio = (celdas.groupby("anio")
-                .agg(con_peso=("con_peso", "sum"), bpn_n=("bpn_n", "sum"))
-                .reset_index())
     filas = []
-    for periodo, ini, fin in [("2005-2024", 2005, 2024), ("2005-2021", 2005, 2021)]:
-        r = cb.apc_poisson(por_anio, ini, fin)
-        filas.append({"dpto_res": 0, "departamento": "Colombia",
-                      "periodo": periodo, **r})
+    for nombre, cond in SUBCONJUNTOS.items():
+        por_anio = ((celdas.query(cond) if cond else celdas).groupby("anio")
+                    .agg(con_peso=("con_peso", "sum"), bpn_n=("bpn_n", "sum"))
+                    .reset_index())
+        for periodo, ini, fin in [("2005-2024", 2005, 2024),
+                                  ("2005-2021", 2005, 2021)]:
+            r = cb.apc_poisson(por_anio, ini, fin)
+            filas.append({"dpto_res": 0, "departamento": nombre,
+                          "periodo": periodo, **r})
     dptos = (celdas[celdas["dpto_res"].gt(0)]
              .groupby(["dpto_res", "anio"])
              .agg(con_peso=("con_peso", "sum"), bpn_n=("bpn_n", "sum"))
@@ -114,6 +128,29 @@ def calidad_peso(celdas: pd.DataFrame) -> pd.DataFrame:
     d = d.pivot(index="dpto_res", columns="quinq",
                 values="pct_sin_peso").add_prefix("pct_sin_peso").reset_index()
     d.insert(1, "departamento", d["dpto_res"].map(cb.DPTO_NOM))
+    return d
+
+
+# C5b. Origen del faltante de peso por año, en tres grupos disjuntos
+
+def faltante_peso_origen(celdas: pd.DataFrame) -> pd.DataFrame:
+    """Por año y grupo (sin departamento de residencia; Chocó, La Guajira y
+    Cesar; resto): % sin peso, parte del faltante nacional del año que aporta
+    el grupo y % BPN con IC 95 % (Wilson)."""
+    dpto = celdas["dpto_res"]
+    grupo = np.select([dpto.eq(0), dpto.isin(cb.DPTOS_FALTANTE_PESO)],
+                      ["Sin residencia", "Chocó, La Guajira y Cesar"], "Resto")
+    d = (celdas.groupby(["anio", grupo])
+         .agg(nacidos_vivos=("n", "sum"), con_peso=("con_peso", "sum"),
+              bpn_n=("bpn_n", "sum"))
+         .rename_axis(["anio", "grupo"]).reset_index())
+    d["sin_peso"] = d["nacidos_vivos"] - d["con_peso"]
+    d["pct_sin_peso"] = 100 * d["sin_peso"] / d["nacidos_vivos"]
+    d["pct_del_faltante"] = 100 * d["sin_peso"] / d.groupby("anio")["sin_peso"].transform("sum")
+    d["pct_bpn"] = 100 * d["bpn_n"] / d["con_peso"]
+    d["li_bpn"], d["ls_bpn"] = cb.wilson(d["bpn_n"], d["con_peso"])
+    assert np.allclose(d.groupby("anio")["pct_del_faltante"].sum(), 100), \
+        "las partes del faltante no suman 100"
     return d
 
 
@@ -318,6 +355,7 @@ def calcular(celdas: pd.DataFrame) -> dict:
         "Departamento_largo": largo,
         "Departamento_%BPN": departamento_ancho(largo),
         "Calidad_registro_peso": calidad_peso(celdas),
+        "Faltante_peso_origen": faltante_peso_origen(celdas),
         "Sexo": por_sexo(),
         "Distribucion_peso": distribucion_peso(),
         "Gestacion": gest,
@@ -342,6 +380,10 @@ def imprimir(r: dict) -> None:
     print(r["Calidad_registro_peso"].sort_values("pct_sin_peso4", ascending=False)
           [["departamento", "pct_sin_peso1", "pct_sin_peso4"]]
           .head(8).round(2).to_string(index=False))
+    print("\n--- C5b. Origen del faltante de peso (% del faltante nacional) ---")
+    print(r["Faltante_peso_origen"].pivot(index="anio", columns="grupo",
+                                          values="pct_del_faltante")
+          .round(1).to_string())
     print("\n--- C6. Por sexo ---")
     print(r["Sexo"][["anio", "pct_bpnHombre", "pct_bpnMujer"]]
           .round(2).to_string(index=False))
