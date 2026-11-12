@@ -5,8 +5,9 @@
 #  - Rutas y constantes del proyecto.
 #  - Etiquetas de las variables armonizadas.
 #  - Lectura de los microdatos con dane-data y agregación a "celdas" por
-#    (anio, dpto_res, cod_mpio, educ4, regimen, edad6) con las cuentas
-#    (nacidos, con peso, BPN, BPN a término, régimen, educación, altitud).
+#    (anio, dpto_res, cod_mpio, educ4, regimen, edad6, paridad3, etnia3,
+#    area2) con las cuentas (nacidos, con peso, BPN, BPN a término, semana
+#    37, régimen, educación, altitud).
 #    Los 4 objetivos se calculan a partir de estas celdas.
 #  - Altitud por municipio: merge con el CSV e imputación con la media del
 #    departamento ponderada por nacimientos.
@@ -69,6 +70,12 @@ EDUC4_ETQ = {1: "Ninguno o preescolar", 2: "Primaria",
              9: "Sin información"}
 REGIMEN_ETQ = {1: "Contributivo, excepción o especial", 2: "Subsidiado",
                3: "No asegurado", 9: "Sin información"}
+PARIDAD3_ETQ = {1: "Primer hijo", 2: "Segundo hijo", 3: "Tercero o más",
+                9: "Sin información"}
+ETNIA3_ETQ = {1: "Indígena", 2: "Negra, mulata, afro, raizal o palenquera",
+              3: "Ninguna", 9: "Sin información"}
+AREA2_ETQ = {1: "Cabecera", 2: "Centro poblado o rural disperso",
+             9: "Sin información"}
 
 # 2. LOG: imita el log del análisis (consola + archivo en SALIDAS)
 
@@ -139,17 +146,28 @@ _MAP_REGIMEN = {
     "Contributivo": 1, "Excepción": 1, "Especial": 1,
     "Subsidiado": 2, "No asegurado": 3,
 }
+# Etnia: "Sin información" y Rom (menos de 250 al año) quedan sin dato.
+_MAP_ETNIA3 = {
+    "Indígena": 1, "Negro, mulato o afrodescendiente": 2, "Raizal": 2,
+    "Palenquero": 2, "Ninguna": 3,
+}
+# Área: centro poblado y rural disperso se juntan ("Resto" es su suma en los
+# años viejos).
+_MAP_AREA2 = {"Cabecera": 1, "Centro poblado": 2, "Rural disperso": 2, "Resto": 2}
 
-_CUENTAS = ["n", "con_peso", "bpn_n", "n_term", "bpn_term_n", "reg_conocido",
-            "n_nocontrib", "n_sub", "edu_conocido", "n_bajaedu"]
+_LLAVES = ["anio", "dpto_res", "cod_mpio", "educ4", "regimen", "edad6",
+           "paridad3", "etnia3", "area2", "altitud_m"]
+_CUENTAS = ["n", "con_peso", "bpn_n", "n_term", "bpn_term_n", "n_gest_u",
+            "n_sem37", "bpn_sem37", "reg_conocido", "n_nocontrib", "n_sub",
+            "edu_conocido", "n_bajaedu"]
 
 
 def _armonizar(anio: int) -> pd.DataFrame:
     """Lee el año con dane-data y devuelve las celdas de conteos del año.
 
-    Celdas por (anio, dpto_res, cod_mpio, educ4, regimen, edad6); la altitud
-    del CSV va por municipio, y su imputación se resuelve después, sobre la
-    serie completa, usando la media ponderada por nacimientos.
+    Celdas por las columnas de _LLAVES; la altitud del CSV va por municipio,
+    y su imputación se resuelve después, sobre la serie completa, usando la
+    media ponderada por nacimientos.
     """
     d = dd.eevv.load(anio, tipo="nacimientos", columns=["PESO_NAC"])
 
@@ -165,8 +183,21 @@ def _armonizar(anio: int) -> pd.DataFrame:
     bpn_term = bpn.where(
         termino.fillna(False).to_numpy() & unico.fillna(False).to_numpy())
 
+    # Semana 37 en partos únicos: T_GES 28-37 que T_GES_AGRU_CIE (`prematuro`)
+    # no marca como <37. Sin esa variable (2005-2007, 2012, 2013 y 2020) no se
+    # sabe: n_gest_u = 0.
+    prem = d["prematuro"].astype("boolean")
+    bpn_gest_u = bpn.where((unico.fillna(False) & prem.notna()).to_numpy())
+    bpn_sem37 = bpn_gest_u.where(
+        (d["gestacion_grupo"].astype(object).eq("De 28 a 37")
+         & prem.eq(False).fillna(False)).to_numpy())
+
     edad6 = d["edad_madre"].astype(object).map(_MAP_EDAD6).astype("Int8")
     educ4 = d["nivel_educativo_madre"].astype(object).map(_MAP_EDUC4).astype("Int8")
+    paridad3 = pd.cut(d["hijos_nacidos_vivos"].astype("float"), [0, 1, 2, np.inf],
+                      labels=[1, 2, 3]).astype("Int8")
+    etnia3 = d["etnia"].astype(object).map(_MAP_ETNIA3).astype("Int8")
+    area2 = d["area_residencia"].astype(object).map(_MAP_AREA2).astype("Int8")
     if anio >= 2008:      # SEG_SOCIAL solo es comparable desde 2008
         regimen = d["regimen_salud"].astype(object).map(_MAP_REGIMEN).astype("Int8")
     else:
@@ -186,6 +217,7 @@ def _armonizar(anio: int) -> pd.DataFrame:
     df = pd.DataFrame({
         "anio": anio, "dpto_res": dpto, "cod_mpio": cod_mpio,
         "educ4": educ4, "regimen": regimen, "edad6": edad6,
+        "paridad3": paridad3, "etnia3": etnia3, "area2": area2,
     }).merge(alt, on="cod_mpio", how="left")
 
     x = pd.concat([df.reset_index(drop=True),
@@ -195,14 +227,16 @@ def _armonizar(anio: int) -> pd.DataFrame:
         "bpn_n": bpn.fillna(False).to_numpy(dtype=float),
         "n_term": bpn_term.notna().to_numpy(dtype=float),
         "bpn_term_n": bpn_term.fillna(False).to_numpy(dtype=float),
+        "n_gest_u": bpn_gest_u.notna().to_numpy(dtype=float),
+        "n_sem37": bpn_sem37.notna().to_numpy(dtype=float),
+        "bpn_sem37": bpn_sem37.fillna(False).to_numpy(dtype=float),
         "reg_conocido": df["regimen"].notna().to_numpy(dtype=float),
         "n_nocontrib": df["regimen"].isin([2, 3]).to_numpy(dtype=float),
         "n_sub": df["regimen"].eq(2).to_numpy(dtype=float),
         "edu_conocido": df["educ4"].notna().to_numpy(dtype=float),
         "n_bajaedu": df["educ4"].isin([1, 2]).to_numpy(dtype=float),
     }).reset_index(drop=True)], axis=1)
-    celdas = (x.groupby(["anio", "dpto_res", "cod_mpio", "educ4", "regimen",
-                         "edad6", "altitud_m"], observed=True, dropna=False)
+    celdas = (x.groupby(_LLAVES, observed=True, dropna=False)
                 .agg({c: "sum" for c in _CUENTAS})
                 .reset_index())
     return celdas
@@ -252,8 +286,8 @@ def _huella(fuente: Path) -> str:
 def cargar_celdas(anios=None, refrescar: bool = False) -> pd.DataFrame:
     """Celdas 2005-2024 (o los años pedidos), con caché parquet por año.
 
-    Devuelve un DataFrame con las llaves (anio, dpto_res, cod_mpio, educ4,
-    regimen, edad6, altitud_m, alt_cat) y las cuentas de _CUENTAS.
+    Devuelve un DataFrame con las llaves de _LLAVES, alt_cat y las cuentas
+    de _CUENTAS.
     """
     if anios is None:
         anios = range(ANIO_INI, ANIO_FIN + 1)

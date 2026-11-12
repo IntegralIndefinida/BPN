@@ -56,6 +56,13 @@ def test_armonizar():
                           "Contributivo", "Sin información", "No asegurado"],
         "dpto_residencia": [5, 5, 5, 5, 5, 5],
         "mpio_residencia": [5001, 5001, 5001, 5001, 5001, 5001],
+        # semana 37 = T_GES 28-37 que T_GES_AGRU_CIE no marca como <37 (fila 3)
+        "prematuro": pd.array([False, False, False, False, pd.NA, pd.NA],
+                              dtype="boolean"),
+        "hijos_nacidos_vivos": [1, 1, 2, 5, np.nan, 1],
+        "etnia": ["Ninguna", "Ninguna", "Indígena", "Raizal", "Rom", "Sin información"],
+        "area_residencia": ["Cabecera", "Cabecera", "Rural disperso",
+                            "Centro poblado", "Cabecera", "Cabecera"],
     })
     alt = "cod_mpio,altitud_m\n5001,1500\n"
     with TemporaryDirectory() as tmp:
@@ -69,7 +76,8 @@ def test_armonizar():
         finally:
             cb.dd.eevv.load = original_load
             cb.ALTITUD_CSV = original_alt
-    #  las celdas se parten por (educ4, regimen, edad6): 5 combinaciones
+    #  las celdas se parten por (educ4, regimen, edad6, paridad3, etnia3,
+    #  area2): las filas 1 y 2 coinciden en todo, 5 combinaciones
     assert len(celdas) == 5
     assert celdas["n"].sum() == 6                    # todos los nacidos
     assert celdas["con_peso"].sum() == 5             # fuera el peso 9
@@ -77,6 +85,12 @@ def test_armonizar():
     #  término = 38+ semanas y parto único, con peso: filas 1 y 4
     assert celdas["n_term"].sum() == 2
     assert celdas["bpn_term_n"].sum() == 1
+    #  únicos con peso y T_GES_AGRU_CIE conocida: filas 1, 3 y 4; semana 37: la 3
+    assert celdas["n_gest_u"].sum() == 3
+    assert celdas["n_sem37"].sum() == 1 and celdas["bpn_sem37"].sum() == 1
+    assert celdas["paridad3"].eq(3).sum() == 1               # 5 hijos -> 3 o más
+    assert celdas["etnia3"].isna().sum() == 2                # Rom y sin información
+    assert sorted(celdas["area2"].dropna().unique()) == [1, 2]
     assert celdas["reg_conocido"].sum() == 5         # fuera "Sin información"
     assert celdas["n_nocontrib"].sum() == 2          # subsidiado + no asegurado
     assert celdas["n_sub"].sum() == 1
@@ -89,5 +103,5 @@ if __name__ == "__main__":
     test_peso_grupo()
     print("ok: _peso_grupo (grupos y gramos)")
     test_armonizar()
-    print("ok: _armonizar (BPN, término, régimen, altitud)")
+    print("ok: _armonizar (BPN, término, semana 37, régimen, altitud, llaves)")
     print("Todas las pruebas pasaron.")
