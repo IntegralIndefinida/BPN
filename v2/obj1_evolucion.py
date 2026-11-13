@@ -2,7 +2,8 @@
 #  Aquí va la Objetivo 1: Objetivo 1 - evolución y distribución del
 #  BPN: prevalencia nacional (cruda y estandarizada por edad), APC (Poisson
 #  robusto, también por subconjunto de registros), prevalencia por
-#  departamento, calidad del registro del peso y origen del faltante de peso,
+#  departamento, calidad del registro del peso, flujo de registros según la
+#  fuente del certificado y origen del faltante de peso,
 #  por sexo y distribución del peso, con IC 95 % de Wilson, y descomposición
 #  de la tendencia por semanas de gestación (Kitagawa). El bloque C9 mira el
 #  corrimiento hacia 28-37 semanas: pretérmino y semana 37 por separado, en
@@ -57,8 +58,8 @@ def nacional_estandarizada(celdas: pd.DataFrame) -> pd.DataFrame:
 # C3. Cambio porcentual anual (APC), nacional y por departamento
 
 # Subconjuntos nacionales de registros: separan el quiebre de registro de la
-# tendencia (desde 2022 el faltante de peso está en los registros sin
-# departamento de residencia, dpto_res = 0)
+# tendencia (desde 2022 el faltante de peso está en los recuperados de la
+# Registraduría, que no traen departamento de residencia: dpto_res = 0)
 SUBCONJUNTOS = {
     "Colombia": None,
     "Con residencia conocida": "dpto_res > 0",
@@ -133,12 +134,109 @@ def calidad_peso(celdas: pd.DataFrame) -> pd.DataFrame:
     return d
 
 
-# C5b. Origen del faltante de peso por año, en tres grupos disjuntos
+# C5b. Fuente del certificado (TIPOFORMULARIO, desde 2021) y flujo de registros
+# 1 = certificado médico (RUAF-ND); 2 = Formato de Notificación Étnica;
+# 3 = recuperado en el cruce con la Registraduría (RNEC): nacimientos captados
+# por el registro civil y no por el certificado médico. Los de tipo 3 no traen
+# peso, semanas, educación ni residencia (sí dónde ocurrieron): no son un
+# faltante de peso al azar, son otra clase de registro, y también inflan los
+# "sin dato" de gestación y educación de 2022-2024. La base analítica es el
+# total menos los de tipo 3. Con los microdatos públicos (sin identificador)
+# no se puede comprobar si alguno duplica un certificado médico.
 
-def faltante_peso_origen(celdas: pd.DataFrame) -> pd.DataFrame:
-    """Por año y grupo (sin departamento de residencia; Chocó, La Guajira y
-    Cesar; resto): % sin peso, parte del faltante nacional del año que aporta
-    el grupo y % BPN con IC 95 % (Wilson)."""
+ANIO_FUENTE = 2021
+RNEC = "Recuperados de la Registraduría (sin información clínica)"
+
+
+def fuente_certificado() -> pd.DataFrame:
+    """Registros por año, fuente del certificado y departamento de ocurrencia:
+    cuántos son y cuántos tienen peso, BPN y departamento de residencia."""
+    partes = []
+    for anio in range(ANIO_FUENTE, cb.ANIO_FIN + 1):
+        d = cb.dd.eevv.load(anio, tipo="nacimientos",
+                            columns=["PESO_NAC", "TIPOFORMULARIO"])
+        if "TIPOFORMULARIO" not in d:          # el año no trae la variable
+            continue
+        peso = cb._peso_grupo(pd.to_numeric(d["PESO_NAC"], errors="coerce"))
+        g = pd.DataFrame({
+            "anio": anio, "fuente": d["TIPOFORMULARIO"].astype("float"),
+            "dpto_ocu": d["dpto_ocurrencia"].astype("float"), "n": 1.0,
+            "con_peso": peso.notna().to_numpy(float),
+            "bpn_n": peso.between(1, 4).fillna(False).to_numpy(float),
+            "con_residencia": d["dpto_residencia"].isin(cb.DPTOS_VALIDOS)
+                              .fillna(False).to_numpy(float)})
+        partes.append(g.groupby(["anio", "fuente", "dpto_ocu"], as_index=False,
+                                dropna=False).sum())
+    columnas = ["anio", "fuente", "dpto_ocu", "n", "con_peso", "bpn_n", "con_residencia"]
+    return pd.concat([pd.DataFrame(columns=columnas, dtype=float), *partes],
+                     ignore_index=True)
+
+
+def flujo_registros(celdas: pd.DataFrame, fuente: pd.DataFrame) -> pd.DataFrame:
+    """Flujo de registros por año: totales, recuperados de la Registraduría,
+    base analítica (total menos recuperados), sin peso en la base y con peso.
+    pct_sin_peso_base es la serie principal del faltante de peso. Los de
+    Notificación Étnica siguen en la base (tienen residencia y más de la mitad
+    tiene peso): se reporta cuántos son y el % BPN sin ellos."""
+    sin_res = celdas["dpto_res"].eq(0)
+    d = pd.DataFrame({
+        "registros": celdas.groupby("anio")["n"].sum(),
+        "con_peso": celdas.groupby("anio")["con_peso"].sum(),
+        "bpn_n": celdas.groupby("anio")["bpn_n"].sum(),
+        "con_peso_sin_residencia": celdas["con_peso"].where(sin_res, 0.0)
+                                   .groupby(celdas["anio"]).sum(),
+        "_sin_peso_sin_residencia": (celdas["n"] - celdas["con_peso"]).where(sin_res, 0.0)
+                                    .groupby(celdas["anio"]).sum()})
+    por = lambda tipo: (fuente[fuente["fuente"].eq(tipo)].groupby("anio")
+                        [["n", "con_peso", "bpn_n", "con_residencia"]].sum()
+                        .reindex(d.index, fill_value=0.0))
+    rnec, etnica = por(3), por(2)
+    total = fuente.groupby("anio")["n"].sum()
+    assert total.eq(d["registros"].reindex(total.index)).all(), \
+        "los registros por fuente no suman los de las celdas"
+    assert rnec["con_peso"].eq(0).all() and rnec["con_residencia"].eq(0).all(), \
+        "hay recuperados de la Registraduría con peso o con residencia"
+    assert (rnec["n"] <= d["_sin_peso_sin_residencia"]).all(), \
+        "más recuperados que registros sin peso y sin residencia"
+    d.insert(1, "recuperados_rnec", rnec["n"])
+    d.insert(2, "base_analitica", d["registros"] - d["recuperados_rnec"])
+    d.insert(3, "sin_peso_base", d["base_analitica"] - d["con_peso"])
+    d.insert(4, "pct_sin_peso_base", 100 * d["sin_peso_base"] / d["base_analitica"])
+    d["pct_sin_peso_total"] = 100 * (d["registros"] - d["con_peso"]) / d["registros"]
+    d["notificacion_etnica"] = etnica["n"]
+    d["pct_sin_peso_etnica"] = 100 * (1 - etnica["con_peso"] / etnica["n"])
+    d["pct_bpn"] = 100 * d["bpn_n"] / d["con_peso"]
+    d["pct_bpn_sin_etnica"] = (100 * (d["bpn_n"] - etnica["bpn_n"])
+                               / (d["con_peso"] - etnica["con_peso"]))
+    return d.drop(columns=["bpn_n", "_sin_peso_sin_residencia"]).reset_index()
+
+
+def rnec_ocurrencia(fuente: pd.DataFrame) -> pd.DataFrame:
+    """Recuperados de la Registraduría por departamento de ocurrencia y año,
+    frente a los nacimientos con certificado ocurridos allí: qué parte de los
+    nacimientos del departamento no tiene información clínica. No entran a los
+    análisis por departamento, que usan la residencia."""
+    f = fuente.assign(tipo=np.where(fuente["fuente"].eq(3), "recuperados_rnec",
+                                    "con_certificado"))
+    d = (f.groupby(["anio", "dpto_ocu", "tipo"])["n"].sum().unstack(fill_value=0.0)
+         .reset_index())
+    d = d[d["recuperados_rnec"] > 0]
+    d["pct_rnec"] = 100 * d["recuperados_rnec"] / (d["recuperados_rnec"]
+                                                   + d["con_certificado"])
+    d["pct_del_total_rnec"] = (100 * d["recuperados_rnec"]
+                               / d.groupby("anio")["recuperados_rnec"].transform("sum"))
+    d.insert(1, "departamento_ocurrencia", d["dpto_ocu"].map(cb.DPTO_NOM))
+    return (d.drop(columns="dpto_ocu").rename_axis(columns=None)
+            .sort_values(["anio", "recuperados_rnec"], ascending=[True, False])
+            .reset_index(drop=True))
+
+
+# C5c. Origen del faltante de peso por año, en cuatro grupos disjuntos
+
+def faltante_peso_origen(celdas: pd.DataFrame, flujo: pd.DataFrame) -> pd.DataFrame:
+    """Por año y grupo (recuperados de la Registraduría; otros sin departamento
+    de residencia; Chocó, La Guajira y Cesar; resto): % sin peso, parte del
+    faltante nacional del año que aporta el grupo y % BPN con IC 95 % (Wilson)."""
     dpto = celdas["dpto_res"]
     grupo = np.select([dpto.eq(0), dpto.isin(cb.DPTOS_FALTANTE_PESO)],
                       ["Sin residencia", "Chocó, La Guajira y Cesar"], "Resto")
@@ -146,11 +244,21 @@ def faltante_peso_origen(celdas: pd.DataFrame) -> pd.DataFrame:
          .agg(nacidos_vivos=("n", "sum"), con_peso=("con_peso", "sum"),
               bpn_n=("bpn_n", "sum"))
          .rename_axis(["anio", "grupo"]).reset_index())
+    # los recuperados (sin peso ni residencia) salen de "Sin residencia"
+    rnec = flujo[flujo["recuperados_rnec"] > 0].set_index("anio")["recuperados_rnec"]
+    sin_res = d["grupo"].eq("Sin residencia")
+    d.loc[sin_res, "nacidos_vivos"] -= d.loc[sin_res, "anio"].map(rnec).fillna(0.0)
+    d = pd.concat([d, pd.DataFrame({"anio": rnec.index, "grupo": RNEC,
+                                    "nacidos_vivos": rnec.to_numpy(),
+                                    "con_peso": 0.0, "bpn_n": 0.0})],
+                  ignore_index=True).sort_values(["anio", "grupo"], ignore_index=True)
     d["sin_peso"] = d["nacidos_vivos"] - d["con_peso"]
     d["pct_sin_peso"] = 100 * d["sin_peso"] / d["nacidos_vivos"]
     d["pct_del_faltante"] = 100 * d["sin_peso"] / d.groupby("anio")["sin_peso"].transform("sum")
     d["pct_bpn"] = 100 * d["bpn_n"] / d["con_peso"]
-    d["li_bpn"], d["ls_bpn"] = cb.wilson(d["bpn_n"], d["con_peso"])
+    con = d["con_peso"] > 0
+    d.loc[con, "li_bpn"], d.loc[con, "ls_bpn"] = cb.wilson(d.loc[con, "bpn_n"],
+                                                         d.loc[con, "con_peso"])
     assert np.allclose(d.groupby("anio")["pct_del_faltante"].sum(), 100), \
         "las partes del faltante no suman 100"
     return d
@@ -529,8 +637,8 @@ def grafico_g1(nac: pd.DataFrame, estand: pd.DataFrame):
     ax.set_ylabel("% de nacidos vivos con peso < 2.500 g")
     ax.set_title("Bajo peso al nacer en Colombia, 2005-2024", fontsize=12)
     ax.legend(loc="upper left", ncols=1, fontsize=9)
-    ax.annotate("Desde 2022 la base incluye registros de la\n"
-                "Registraduría sin información de peso.\n"
+    ax.annotate("Nacidos con peso conocido. Los recuperados del cruce con la\n"
+                "Registraduría (2022-2024) no traen peso y no entran.\n"
                 "Fuente: DANE, Estadísticas Vitales. Cálculos propios.",
                 xy=(1, -0.14), xycoords="axes fraction", ha="right",
                 fontsize=7, va="top")
@@ -655,14 +763,21 @@ def calcular(celdas: pd.DataFrame) -> dict:
     gest = por_gestacion()
     tp = tabla_parto()
     fina = gestacion_fina(tp)
+    flujo = flujo_registros(celdas, fuente := fuente_certificado())
     return {
-        "Nacional": nacional_anio(celdas),
+        # la base analítica (sin los recuperados de la Registraduría) es la
+        # serie principal del faltante de peso: pct_sin_peso_base
+        "Nacional": nacional_anio(celdas).merge(
+            flujo[["anio", "recuperados_rnec", "base_analitica", "pct_sin_peso_base"]],
+            on="anio", validate="one_to_one"),
+        "Flujo_registros": flujo,
+        "RNEC_por_ocurrencia": rnec_ocurrencia(fuente),
         "Nacional_estandarizada": nacional_estandarizada(celdas),
         "APC": apc(celdas),
         "Departamento_largo": largo,
         "Departamento_%BPN": departamento_ancho(largo),
         "Calidad_registro_peso": calidad_peso(celdas),
-        "Faltante_peso_origen": faltante_peso_origen(celdas),
+        "Faltante_peso_origen": faltante_peso_origen(celdas, flujo),
         "Sexo": por_sexo(),
         "Distribucion_peso": distribucion_peso(),
         "Gestacion": gest,
@@ -694,7 +809,12 @@ def imprimir(r: dict) -> None:
     print(r["Calidad_registro_peso"].sort_values("pct_sin_peso4", ascending=False)
           [["departamento", "pct_sin_peso1", "pct_sin_peso4"]]
           .head(8).round(2).to_string(index=False))
-    print("\n--- C5b. Origen del faltante de peso (% del faltante nacional) ---")
+    print("\n--- C5b. Flujo de registros (base analítica = total - recuperados RNEC) ---")
+    print(r["Flujo_registros"].round(2).to_string(index=False))
+    ro = r["RNEC_por_ocurrencia"]
+    print("\nRecuperados de la Registraduría por departamento de ocurrencia (5 mayores por año):")
+    print(ro.groupby("anio").head(5).round(1).to_string(index=False))
+    print("\n--- C5c. Origen del faltante de peso (% del faltante nacional) ---")
     print(r["Faltante_peso_origen"].pivot(index="anio", columns="grupo",
                                           values="pct_del_faltante")
           .round(1).to_string())

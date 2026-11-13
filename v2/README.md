@@ -46,7 +46,7 @@ Ningún módulo escribe archivos por su cuenta: eso lo hace `correr.py`.
 | `correr.py` | corre los objetivos y guarda log, xlsx y png |
 | `sintesis.ipynb` | síntesis del análisis: recalcula y muestra tablas y gráficos |
 | `comun_bpn.py` | rutas, etiquetas, carga con `dd.eevv`, celdas de conteos, imputación de altitud, caché, helpers (Wilson, APC Poisson, Excel, gráficos, log) |
-| `obj1_evolucion.py` | prevalencia nacional (cruda y estandarizada), APC (nacional y por subconjunto de registros: con residencia conocida, sin Chocó, La Guajira y Cesar), departamentos, calidad del registro del peso y origen del faltante (hoja `Faltante_peso_origen`), sexo, distribución del peso, descomposición de la tendencia por semanas de gestación (Kitagawa), corrimiento hacia 28-37 semanas (pretérmino y semana 37 por separado, por tipo de parto, paridad, educación, régimen y departamento, prueba con el peso y defunciones fetales), G1 y G12–G15 |
+| `obj1_evolucion.py` | prevalencia nacional (cruda y estandarizada), APC (nacional y por subconjunto de registros: con residencia conocida, sin Chocó, La Guajira y Cesar), departamentos, calidad del registro del peso, flujo de registros según la fuente del certificado (hojas `Flujo_registros` y `RNEC_por_ocurrencia`) y origen del faltante (hoja `Faltante_peso_origen`), sexo, distribución del peso, descomposición de la tendencia por semanas de gestación (Kitagawa), corrimiento hacia 28-37 semanas (pretérmino y semana 37 por separado, por tipo de parto, paridad, educación, régimen y departamento, prueba con el peso y defunciones fetales), G1 y G12–G15 |
 | `obj2_desigualdades.py` | Theil/MLD, RP/DP frente al promedio nacional y RP/DP/PAF frente a una referencia fija (grupo de cinco departamentos de baja prevalencia, hojas `_fija`; las principales son las ajustadas por altitud y edad, `_aj_fija`), por quinquenio y año, con IC 95 %; la referencia móvil (mínimo elegible de cada periodo) queda como sensibilidad; sensibilidad del PAF a la referencia y validación del grupo (hojas `PAF_referencias` y `Referencia_fija`); G7/G8 |
 | `obj3_educacion.py` | prevalencias por educación y régimen, Poisson M0–M5 con errores cluster dpto (principal: M4, con altitud y efectos fijos de departamento; M5 = M4 con BPN a término), RII/SII con ese ajuste por quinquenio y cotas extremas por educación faltante; sensibilidad del gradiente (sin régimen, educación faltante como categoría, paridad, etnia y área), tendencia del RII con bootstrap wild por departamento y controles con la semana 37, % sin dato por año, G9/G10 |
 | `obj4_concentracion.py` | estandarización indirecta por altitud y edad, índices C/W/E por regresión conveniente (Kakwani), 11 variantes (una sin Chocó, La Guajira y Cesar), bootstrap por departamento, trienios 2008-2010 vs 2022-2024 y vs 2019-2021 (antes del quiebre de registro de 2022) con bootstrap pareado, curvas G3–G6/G11, G2 |
@@ -107,6 +107,13 @@ Ningún módulo escribe archivos por su cuenta: eso lo hace `correr.py`.
   9.999 réplicas, semilla 20241); IC 95 % con t de 32 grados de libertad.
 - Etnia: "Sin información" y Rom quedan sin dato; falta en 2005-2007, 2012 y
   2013. Área: centro poblado y rural disperso van juntos.
+- Fuente del certificado (`TIPOFORMULARIO`, desde 2021): 1 = certificado
+  médico (RUAF-ND), 2 = Formato de Notificación Étnica, 3 = recuperado en el
+  cruce con la Registraduría. Los de tipo 3 (2.083 en 2022, 4.086 en 2023 y
+  8.303 en 2024) no traen peso, semanas, educación ni residencia, solo dónde
+  ocurrieron. La base analítica es el total menos esos registros, y
+  `pct_sin_peso_base` es la serie principal del faltante de peso. Con los
+  microdatos públicos no se puede comprobar si duplican certificados médicos.
 - Semanas de gestación: `T_GES` agrupa 28-37 semanas. La semana 37 se separa
   del pretérmino (28-36) cruzándola con `T_GES_AGRU_CIE` (`prematuro` en
   `dane-data`), que falta en 2005-2007, 2012, 2013 y 2020.
