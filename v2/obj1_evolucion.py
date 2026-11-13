@@ -8,6 +8,7 @@
 #  de la tendencia por semanas de gestación (Kitagawa). El bloque C9 mira el
 #  corrimiento hacia 28-37 semanas: pretérmino y semana 37 por separado, en
 #  quién ocurre, prueba con el peso y contraste con las defunciones fetales.
+#  El bloque C10 acota el aporte de las madres nacidas en Venezuela.
 #  Salidas: Objetivo1_Evolucion_BPN.xlsx, G1 y G12-G15 png y el log.
 
 import numpy as np
@@ -60,11 +61,17 @@ def nacional_estandarizada(celdas: pd.DataFrame) -> pd.DataFrame:
 # Subconjuntos nacionales de registros: separan el quiebre de registro de la
 # tendencia (desde 2022 el faltante de peso está en los recuperados de la
 # Registraduría, que no traen departamento de residencia: dpto_res = 0)
+# La Guajira, Cesar, Norte de Santander y Arauca. Quitarlos no es una
+# sensibilidad sino otro estimando (el resto del país), y en La Guajira mezcla
+# migración con composición étnica (wayuu).
+DPTOS_FRONTERA = [44, 20, 54, 81]
 SUBCONJUNTOS = {
     "Colombia": None,
     "Con residencia conocida": "dpto_res > 0",
     "Con residencia, sin Chocó, La Guajira y Cesar":
         f"dpto_res > 0 and dpto_res not in {cb.DPTOS_FALTANTE_PESO}",
+    "Con residencia, sin departamentos de frontera con Venezuela":
+        f"dpto_res > 0 and dpto_res not in {DPTOS_FRONTERA}",
 }
 
 
@@ -712,6 +719,187 @@ def grafico_distribucion(dist: pd.DataFrame):
     return fig
 
 
+# C10. Migración: madres nacidas en Venezuela
+# CODPAISNACMAD (país de nacimiento de la madre, códigos M49) existe desde
+# 2024; el archivo de 2025 es preliminar y solo se usa aquí, como réplica. Es
+# país de nacimiento, no nacionalidad (los microdatos no la traen): incluye a
+# colombianas retornadas nacidas en Venezuela. Los recuperados de la
+# Registraduría no traen país: quedan en "Sin dato" y fuera de las tasas.
+
+ANIOS_PAIS = (2024, 2025)
+_PAISES = ["Colombia", "Venezuela", "Otro país", "Sin dato"]
+
+
+def _registros_pais(anio: int) -> pd.DataFrame:
+    """Un registro por nacido del año, con el país de nacimiento de la madre
+    y las variables de la comparación (mismas definiciones del pipeline)."""
+    d = cb.dd.eevv.load(anio, tipo="nacimientos",
+                        columns=["PESO_NAC", "CODPAISNACMAD", "TIPOFORMULARIO"])
+    pais = pd.to_numeric(d["CODPAISNACMAD"], errors="coerce")
+    peso = cb._peso_grupo(pd.to_numeric(d["PESO_NAC"], errors="coerce"))
+    obj = lambda c: d[c].astype(object)
+    dpto = d["dpto_residencia"].astype("float")
+    return pd.DataFrame({
+        "anio": anio,
+        "pais": np.select([pais.eq(170), pais.eq(862), pais.notna()], _PAISES[:3], _PAISES[3]),
+        "rnec": d["TIPOFORMULARIO"].eq(3).to_numpy(float),
+        "con_peso": peso.notna().to_numpy(float),
+        "bpn": peso.between(1, 4).fillna(False).to_numpy(float),
+        "g2837": obj("gestacion_grupo").eq("De 28 a 37").to_numpy(float),
+        "pretermino": obj("prematuro").eq(True).to_numpy(float),
+        "cesarea": obj("cesarea").eq(True).to_numpy(float),
+        "no_asegurada": obj("regimen_salud").eq("No asegurado").to_numpy(float),
+        "baja_educ": obj("nivel_educativo_madre").map(cb._MAP_EDUC4).isin([1, 2]).to_numpy(float),
+        "dpto_res": dpto.where(dpto.isin(cb.DPTOS_VALIDOS)).to_numpy(),
+        "edad6": obj("edad_madre").map(cb._MAP_EDAD6).to_numpy(float),
+        "educ4": obj("nivel_educativo_madre").map(cb._MAP_EDUC4).to_numpy(float)})
+
+
+def migracion_pais(reg: pd.DataFrame) -> pd.DataFrame:
+    """Por año y país de nacimiento de la madre: nacidos, % sin peso, % BPN
+    con IC 95 % (Wilson), diferencia frente a las nacidas en Colombia con IC y
+    valor p (dos proporciones), y composición entre los nacidos con peso."""
+    from scipy.stats import norm
+    con = reg[reg["con_peso"].eq(1)]
+    g = reg.groupby(["anio", "pais"]).agg(nacidos=("con_peso", "size"),
+                                          recuperados_rnec=("rnec", "sum"),
+                                          con_peso=("con_peso", "sum"), bpn_n=("bpn", "sum"))
+    for col in ["g2837", "pretermino", "cesarea", "no_asegurada", "baja_educ"]:
+        g[f"pct_{col}"] = 100 * con.groupby(["anio", "pais"])[col].mean()
+    g = g.reset_index()
+    g.insert(3, "pct_nacidos", 100 * g["nacidos"] / g.groupby("anio")["nacidos"].transform("sum"))
+    g["pct_sin_peso"] = 100 * (1 - g["con_peso"] / g["nacidos"])
+    g["pct_bpn"] = 100 * g["bpn_n"] / g["con_peso"]
+    g["li_bpn"], g["ls_bpn"] = cb.wilson(g["bpn_n"], g["con_peso"])
+    col = g[g["pais"].eq("Colombia")].set_index("anio")
+    p, n = g["bpn_n"] / g["con_peso"], g["con_peso"]
+    p0, n0 = g["anio"].map(col["bpn_n"] / col["con_peso"]), g["anio"].map(col["con_peso"])
+    ee = np.sqrt(p * (1 - p) / n + p0 * (1 - p0) / n0)
+    g["dif_vs_colombia_pp"] = (100 * (p - p0)).where(g["pais"].ne("Colombia"))
+    g["dif_li"], g["dif_ls"] = g["dif_vs_colombia_pp"] - 196 * ee, g["dif_vs_colombia_pp"] + 196 * ee
+    g["p_dif"] = pd.Series(2 * norm.sf(np.abs(p - p0) / ee),
+                           index=g.index).where(g["pais"].ne("Colombia"))
+    orden = pd.Categorical(g["pais"], _PAISES)
+    return g.assign(_o=orden).sort_values(["anio", "_o"]).drop(columns="_o").reset_index(drop=True)
+
+
+def migracion_cota(reg: pd.DataFrame, nacional: pd.DataFrame) -> pd.DataFrame:
+    """Cuánto del BPN nacional puede deberse a las madres nacidas en
+    Venezuela, por año: BPN con y sin ellas (aporte al nivel) frente al alza
+    desde 2005; qué tan bien las aproxima el régimen "no asegurado"
+    (sensibilidad y valor predictivo); y razón de prevalencias frente a las
+    nacidas en Colombia, cruda y ajustada por edad, educación y departamento
+    (Poisson, errores agrupados por departamento). La ajustada no es causal:
+    la educación puede estar en el camino entre el origen y el BPN."""
+    from obj3_educacion import _ajustar, _dummies
+    bpn_2005 = float(nacional.loc[nacional["anio"].eq(cb.ANIO_INI), "pct_bpn"].iloc[0])
+    filas = []
+    for anio, d in reg[reg["con_peso"].eq(1)].groupby("anio"):
+        ven = d["pais"].eq("Venezuela")
+        todos, sin_ven = 100 * d["bpn"].mean(), 100 * d.loc[~ven, "bpn"].mean()
+        brecha = 100 * (d.loc[ven, "bpn"].mean() - d.loc[d["pais"].eq("Colombia"), "bpn"].mean())
+        fila = {"anio": anio, "pct_nacidas_venezuela": 100 * ven.mean(),
+                "brecha_bpn_pp": brecha, "bpn_todos": todos,
+                "bpn_sin_nacidas_venezuela": sin_ven, "aporte_al_nivel_pp": todos - sin_ven,
+                "alza_desde_2005_pp": todos - bpn_2005,
+                "aporte_pct_del_alza": 100 * (todos - sin_ven) / (todos - bpn_2005),
+                # el régimen "no asegurado" como aproximación de nacida en Venezuela
+                "no_aseg_valor_predictivo": 100 * ven[d["no_asegurada"].eq(1)].mean(),
+                "no_aseg_sensibilidad": 100 * d.loc[ven, "no_asegurada"].mean()}
+        k = d[d["pais"].isin(["Colombia", "Venezuela"]) & d["dpto_res"].notna()
+              & d["edad6"].notna() & d["educ4"].notna()]
+        k = (k.assign(ven=k["pais"].eq("Venezuela").astype(int))
+             .groupby(["dpto_res", "edad6", "educ4", "ven"], as_index=False)
+             .agg(n=("bpn", "size"), casos=("bpn", "sum")))
+        for etq, X in [("cruda", k[["ven"]]),
+                       ("ajustada", pd.concat([k["ven"], _dummies(k, "edad6", 2),
+                                               _dummies(k, "educ4", 4),
+                                               _dummies(k, "dpto_res", 5)], axis=1))]:
+            b, se, _, _ = _ajustar(k, "casos", X, "n")
+            fila |= {f"rp_{etq}": np.exp(b["ven"]),
+                     f"rp_{etq}_li": np.exp(b["ven"] - 1.96 * se["ven"]),
+                     f"rp_{etq}_ls": np.exp(b["ven"] + 1.96 * se["ven"])}
+        filas.append(fila)
+    return pd.DataFrame(filas)
+
+
+def migracion_dptos(reg: pd.DataFrame) -> pd.DataFrame:
+    """Por año y departamento de residencia: % de nacidos (con peso) de madres
+    nacidas en Venezuela y % BPN según el país de nacimiento de la madre."""
+    d = reg[reg["con_peso"].eq(1) & reg["dpto_res"].notna()
+            & reg["pais"].isin(["Colombia", "Venezuela"])]
+    g = (d.groupby(["anio", "dpto_res", "pais"]).agg(n=("bpn", "size"), bpn=("bpn", "sum"))
+         .unstack("pais", fill_value=0.0))
+    t = pd.DataFrame({
+        "con_peso": g["n"].sum(axis=1), "nacidas_venezuela": g["n"]["Venezuela"],
+        "pct_nacidas_venezuela": 100 * g["n"]["Venezuela"] / g["n"].sum(axis=1),
+        "pct_bpn_colombia": 100 * g["bpn"]["Colombia"] / g["n"]["Colombia"],
+        "pct_bpn_venezuela": 100 * g["bpn"]["Venezuela"] / g["n"]["Venezuela"]}).reset_index()
+    t.insert(2, "departamento", t["dpto_res"].map(cb.DPTO_NOM))
+    return t.sort_values(["anio", "pct_nacidas_venezuela"], ascending=[True, False],
+                         ignore_index=True)
+
+
+def no_aseguradas_anual(celdas: pd.DataFrame) -> pd.DataFrame:
+    """Aproximación administrativa a la migración para la serie, 2018-2024:
+    nacimientos de madres no aseguradas. No es la parte migrante de cada año
+    (antes de 2018 es afiliación de colombianas; desde 2021 cae por el
+    Estatuto Temporal de Protección, no porque haya menos madres migrantes).
+    Sirve para una cosa: ver cuánto se mueve el BPN al quitarlas."""
+    d = celdas[celdas["anio"].ge(2018) & celdas["regimen"].notna()]
+    no = d["regimen"].eq(3)
+    g = lambda col, m: d[col].where(m, 0.0).groupby(d["anio"]).sum()
+    t = pd.DataFrame({
+        "pct_no_aseguradas": 100 * g("n", no) / d.groupby("anio")["n"].sum(),
+        "bpn_no_aseguradas": 100 * g("bpn_n", no) / g("con_peso", no),
+        "bpn_aseguradas": 100 * g("bpn_n", ~no) / g("con_peso", ~no),
+        "bpn_todas": 100 * d.groupby("anio")["bpn_n"].sum() / d.groupby("anio")["con_peso"].sum()})
+    t["diferencia_pp"] = t["bpn_todas"] - t["bpn_aseguradas"]
+    return t.reset_index()
+
+
+def alza_por_periodo(celdas: pd.DataFrame) -> pd.DataFrame:
+    """% BPN en 2005, 2015 y 2024 y su cambio antes y después de 2015 (la
+    migración desde Venezuela crece desde 2016-2017), en todo el país y en
+    los subconjuntos de SUBCONJUNTOS."""
+    filas = []
+    for nombre, cond in SUBCONJUNTOS.items():
+        d = celdas.query(cond) if cond else celdas
+        p = 100 * d.groupby("anio")["bpn_n"].sum() / d.groupby("anio")["con_peso"].sum()
+        filas.append({"subconjunto": nombre, "bpn_2005": p[2005], "bpn_2015": p[2015],
+                      "bpn_2024": p[2024], "cambio_2005_2015_pp": p[2015] - p[2005],
+                      "cambio_2015_2024_pp": p[2024] - p[2015]})
+    return pd.DataFrame(filas)
+
+
+NOTAS_MIGRACION = pd.DataFrame([
+    ("Definición", "«Madres nacidas en Venezuela»: país de nacimiento (CODPAISNACMAD = 862, "
+     "códigos M49), no nacionalidad; los microdatos no traen nacionalidad, así que incluye a "
+     "colombianas retornadas nacidas allá."),
+    ("Definición", "La variable existe desde 2024. 2025 es preliminar: se usa como réplica y "
+     "no entra a ninguna serie."),
+    ("Denominadores", "Los recuperados del cruce con la Registraduría (RNEC) no traen país ni "
+     "peso: están en «Sin dato» y fuera de todas las tasas. «Sin dato» = RNEC + certificados "
+     "sin país."),
+    ("Denominadores", "Las tasas usan todos los nacidos con peso (únicos y múltiples), como "
+     "el resto del objetivo 1. Que los totales cuadren con la hoja Nacional es consistencia "
+     "interna, no validación externa."),
+    ("Límite", "Sesgo salmón: si los embarazos complicados regresan a Venezuela antes del "
+     "parto, el BPN de las que paren en Colombia queda subestimado."),
+    ("Límite", "Solo se ven nacidos vivos: no hay defunciones fetales por país de la madre."),
+    ("Límite", "«No asegurada» mide política de afiliación (pandemia, Estatuto Temporal de "
+     "Protección): no sirve para estimar cuántas madres migrantes hay cada año."),
+    ("Límite", "Sin departamentos de frontera es otro estimando (el resto del país), y en La "
+     "Guajira confunde migración con composición étnica (wayuu)."),
+    ("Límite", "La razón de prevalencias ajustada no es causal: la educación puede estar en "
+     "el camino entre el origen y el BPN."),
+    ("Glosario", "BPN: bajo peso al nacer (< 2.500 g). RP: razón de prevalencias. APC: cambio "
+     "porcentual anual. RII: índice relativo de desigualdad. PAF: fracción atribuible "
+     "poblacional. RNEC: Registraduría Nacional del Estado Civil. Pretérmino: menos de 37 "
+     "semanas de gestación."),
+], columns=["tema", "nota"])
+
+
 # G15. Nacidos antes de las 38 semanas: pretérmino (28-36) y semana 37
 
 def grafico_semanas(fina: pd.DataFrame):
@@ -764,10 +952,12 @@ def calcular(celdas: pd.DataFrame) -> dict:
     tp = tabla_parto()
     fina = gestacion_fina(tp)
     flujo = flujo_registros(celdas, fuente := fuente_certificado())
+    nacional = nacional_anio(celdas)
+    reg = pd.concat([_registros_pais(a) for a in ANIOS_PAIS], ignore_index=True)
     return {
         # la base analítica (sin los recuperados de la Registraduría) es la
         # serie principal del faltante de peso: pct_sin_peso_base
-        "Nacional": nacional_anio(celdas).merge(
+        "Nacional": nacional.merge(
             flujo[["anio", "recuperados_rnec", "base_analitica", "pct_sin_peso_base"]],
             on="anio", validate="one_to_one"),
         "Flujo_registros": flujo,
@@ -789,6 +979,12 @@ def calcular(celdas: pd.DataFrame) -> dict:
         "Gestacion_factores": gestacion_factores(tp),
         "Descomp_corrimiento": descomp_corrimiento(tp),
         "Fetales_gestacion": fetales_gestacion(tp),
+        "Migracion_pais": migracion_pais(reg),
+        "Migracion_cota": migracion_cota(reg, nacional),
+        "Migracion_dptos": migracion_dptos(reg),
+        "No_aseguradas_anual": no_aseguradas_anual(celdas),
+        "Alza_por_periodo": alza_por_periodo(celdas),
+        "Migracion_notas": NOTAS_MIGRACION,
         "Control_carga": pd.read_csv(cb.PROCESADOS / "control_carga.csv"),
     }
 
@@ -844,6 +1040,16 @@ def imprimir(r: dict) -> None:
     print(r["Descomp_corrimiento"].round(2).to_string(index=False))
     print("\nDefunciones fetales de 28 semanas y más:")
     print(r["Fetales_gestacion"].round(2).to_string(index=False))
+    print("\n--- C10. Migración: madres nacidas en Venezuela (2025 es preliminar) ---")
+    print(r["Migracion_pais"].round(2).to_string(index=False))
+    print("\nCota del aporte al BPN nacional y razón de prevalencias:")
+    print(r["Migracion_cota"].round(3).T.to_string(header=False))
+    print("\nDepartamentos con más nacidos de madres nacidas en Venezuela (%):")
+    print(r["Migracion_dptos"].groupby("anio").head(6).round(2).to_string(index=False))
+    print("\nMadres no aseguradas, 2018-2024 (aproximación administrativa):")
+    print(r["No_aseguradas_anual"].round(2).to_string(index=False))
+    print("\nAlza del BPN antes y después de 2015:")
+    print(r["Alza_por_periodo"].round(2).to_string(index=False))
 
 
 def graficos(r: dict) -> dict:
