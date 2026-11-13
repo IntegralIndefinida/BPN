@@ -47,7 +47,7 @@ Ningún módulo escribe archivos por su cuenta: eso lo hace `correr.py`.
 | `sintesis.ipynb` | síntesis del análisis: recalcula y muestra tablas y gráficos |
 | `comun_bpn.py` | rutas, etiquetas, carga con `dd.eevv`, celdas de conteos, imputación de altitud, caché, helpers (Wilson, APC Poisson, Excel, gráficos, log) |
 | `obj1_evolucion.py` | prevalencia nacional (cruda y estandarizada), APC (nacional y por subconjunto de registros: con residencia conocida, sin Chocó, La Guajira y Cesar), departamentos, calidad del registro del peso y origen del faltante (hoja `Faltante_peso_origen`), sexo, distribución del peso, descomposición de la tendencia por semanas de gestación (Kitagawa), corrimiento hacia 28-37 semanas (pretérmino y semana 37 por separado, por tipo de parto, paridad, educación, régimen y departamento, prueba con el peso y defunciones fetales), G1 y G12–G15 |
-| `obj2_desigualdades.py` | RP/DP por quinquenio y año frente a la referencia elegible, Theil/MLD, PAR/PAF, extremos, todo en versión cruda y ajustada por altitud y edad (hojas `_aj`), con IC 95 %; G7/G8 comparan las dos versiones |
+| `obj2_desigualdades.py` | Theil/MLD, RP/DP frente al promedio nacional y RP/DP/PAF frente a una referencia fija (grupo de cinco departamentos de baja prevalencia, hojas `_fija`; las principales son las ajustadas por altitud y edad, `_aj_fija`), por quinquenio y año, con IC 95 %; la referencia móvil (mínimo elegible de cada periodo) queda como sensibilidad; sensibilidad del PAF a la referencia y validación del grupo (hojas `PAF_referencias` y `Referencia_fija`); G7/G8 |
 | `obj3_educacion.py` | prevalencias por educación y régimen, Poisson M0–M5 con errores cluster dpto (principal: M4, con altitud y efectos fijos de departamento; M5 = M4 con BPN a término), RII/SII con ese ajuste por quinquenio y cotas extremas por educación faltante; sensibilidad del gradiente (sin régimen, educación faltante como categoría, paridad, etnia y área), tendencia del RII con bootstrap wild por departamento y controles con la semana 37, % sin dato por año, G9/G10 |
 | `obj4_concentracion.py` | estandarización indirecta por altitud y edad, índices C/W/E por regresión conveniente (Kakwani), 11 variantes (una sin Chocó, La Guajira y Cesar), bootstrap por departamento, trienios 2008-2010 vs 2022-2024 y vs 2019-2021 (antes del quiebre de registro de 2022) con bootstrap pareado, curvas G3–G6/G11, G2 |
 
@@ -92,6 +92,12 @@ Ningún módulo escribe archivos por su cuenta: eso lo hace `correr.py`.
 - Los intervalos de confianza y los valores p del bootstrap (objetivo 4) son
   **percentil**: las réplicas son bimodales (C ≈ 0,03 cuando Bogotá no sale en la muestra y
   0,08–0,12 cuando sale), así que estimación ± 1,96·EE no las describe.
+- Referencia fija del objetivo 2 (`DPTOS_REF`): Caquetá, Putumayo, Casanare,
+  Meta y Huila, los cinco departamentos elegibles en los cuatro quinquenios
+  con menor prevalencia ajustada 2005-2024. Se eligió una sola vez con toda
+  la serie; con solo 2005-2014 habrían salido cuatro de los cinco (Caldas en
+  lugar de Meta). El PAF es lo "mejor alcanzable" entre departamentos, no una
+  meta causal.
 - El régimen de afiliación solo es comparable desde 2008 (objetivos 3 y 4).
 - "A término" significa siempre 38 semanas y más en partos únicos, con
   `T_GES` (los 20 años). Los resultados que usan la semana 37 son controles

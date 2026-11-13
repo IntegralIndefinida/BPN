@@ -6,6 +6,7 @@
 #  2. _peso_grupo: rama de grupos y rama de gramos
 #  3. _armonizar: definición de BPN y BPN a término sobre datos sintéticos
 #  4. _p_wild: el bootstrap wild distingue un efecto real de ninguno
+#  5. referencia fija del objetivo 2: códigos de DPTOS_REF y su prevalencia
 
 from pathlib import Path
 from tempfile import TemporaryDirectory
@@ -114,6 +115,21 @@ def test_p_wild():
         assert esperado(p), f"p wild = {p} con beta = {beta}"
 
 
+def test_referencia_fija():
+    import obj2_desigualdades as o2
+    assert [cb.DPTO_NOM[c] for c in o2.DPTOS_REF] == [
+        "Caquetá", "Putumayo", "Casanare", "Meta", "Huila"]
+    d = pd.DataFrame({"dpto_res": [18, 86, 11], "quinq": 1,
+                      "nacidos": [1000.0, 3000.0, 5000.0],
+                      "con_peso": [1000.0, 3000.0, 5000.0],
+                      "bpn_n": [50.0, 210.0, 600.0]})
+    f = o2._referencia(o2._con_elegible(d, 0), "quinq", fija=True)
+    assert np.allclose(f["ref"], 6.5) and np.allclose(f["n_ref"], 4000)   # 260 / 4000
+    assert f["es_ref"].tolist() == [True, True, False]
+    m = o2._referencia(o2._con_elegible(d, 0), "quinq", fija=False)
+    assert np.allclose(m["ref"], 5.0) and m["es_ref"].tolist() == [True, False, False]
+
+
 if __name__ == "__main__":
     test_ic_vec_igual_ic_conc()
     print("ok: ic_vec == ic_conc")
@@ -121,6 +137,8 @@ if __name__ == "__main__":
     print("ok: _peso_grupo (grupos y gramos)")
     test_armonizar()
     print("ok: _armonizar (BPN, término, semana 37, régimen, altitud, llaves)")
+    test_referencia_fija()
+    print("ok: referencia fija y móvil del objetivo 2")
     test_p_wild()
     print("ok: _p_wild (bootstrap wild por departamento)")
     print("Todas las pruebas pasaron.")
