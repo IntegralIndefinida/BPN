@@ -11,12 +11,13 @@ Estadísticas Vitales del DANE. Los scripts producen las salidas del análisis
   exactas están en `requirements.txt`).
 - `dane-data` con los archivos de nacimientos 2005-2024 ya descargados
   (`dd.eevv.available()`), instalado editable desde su repositorio.
-- Insumo `3.0 Datos/altitud_municipios.csv` (altitud por municipio).
+- Insumos en `datos/` (altitud por municipio e IPM departamental; fuentes en
+  `datos/README.md`).
 
 ## Ejecución
 
 ```
-cd "…/3. Metodologia/Code/python/v2"
+cd v2                                            # desde la raíz del repositorio
 ~/.venvs/datascience/bin/python test_bpn.py      # pruebas de la lógica central
 ~/.venvs/datascience/bin/python correr.py        # los 4 objetivos
 ~/.venvs/datascience/bin/python correr.py 2 4    # solo los objetivos 2 y 4
@@ -61,7 +62,7 @@ Ningún módulo escribe archivos por su cuenta: eso lo hace `correr.py`.
   educación) replican exactamente las
   regresiones con datos individuales (nota técnica del objetivo 3) y
   aceleran los Poisson ~10 millones de registros.
-- La caché de celdas está en `3.0 Datos/python_v2/procesados/celdas/`
+- La caché de celdas está en `resultados/procesados/celdas/`
   (un parquet + un JSON por año). La huella incluye el stat del archivo del
   DANE, la versión de `dane-data` y los bytes de `comun_bpn.py`: si cambia
   el módulo, se recalculan todas las celdas. El registro de cargas queda en
@@ -71,7 +72,7 @@ Ningún módulo escribe archivos por su cuenta: eso lo hace `correr.py`.
 
 ## Salidas
 
-`3.0 Datos/python_v2/`:
+`resultados/` (no se versiona):
 
 - `Objetivo1_Evolucion_BPN.xlsx`, `Objetivo2_Desigualdades_RT_DT.xlsx`,
   `Objetivo3_Educacion_Regimen_BPN.xlsx`,
@@ -124,7 +125,7 @@ Ningún módulo escribe archivos por su cuenta: eso lo hace `correr.py`.
   `dane-data`), que falta en 2005-2007, 2012, 2013 y 2020.
 - La validación del ordenamiento contra NBI/IPM (hoja `Validacion_proxy`) se
   omite con un aviso si no existe la plantilla
-  `3.0 Datos/nbi_ipm_departamentos.csv`.
+  `datos/nbi_ipm_departamentos.csv`.
 - La variante anual "Sin Bogotá" no tiene bootstrap en el gráfico G2; el
   bootstrap completo está en los trienios y la
   diferencia pareada.

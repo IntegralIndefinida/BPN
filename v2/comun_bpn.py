@@ -28,9 +28,9 @@ import dane_data as dd
 
 # 0. RUTAS Y AÑOS
 
-RAIZ = Path(__file__).resolve().parents[3]        # .../3. Metodologia
-DATOS = RAIZ / "3.0 Datos"
-SALIDAS = DATOS / "python_v2"                     # gráficos, xlsx y logs
+REPO = Path(__file__).resolve().parents[1]        # raíz del repositorio
+DATOS = REPO / "datos"                            # insumos versionados
+SALIDAS = REPO / "resultados"                     # gráficos, xlsx y logs
 PROCESADOS = SALIDAS / "procesados"               # celdas intermedias (parquet)
 ALTITUD_CSV = DATOS / "altitud_municipios.csv"    # insumo de altitud
 

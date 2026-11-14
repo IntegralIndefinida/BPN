@@ -585,7 +585,7 @@ def validacion_proxy(panel: pd.DataFrame) -> pd.DataFrame | None:
     ruta = cb.DATOS / "nbi_ipm_departamentos.csv"
     if not ruta.exists():
         print("No se encontró la plantilla NBI/IPM "
-              "(3.0 Datos/nbi_ipm_departamentos.csv); se omite la validación.")
+              "(datos/nbi_ipm_departamentos.csv); se omite la validación.")
         return None
     val = pd.read_csv(ruta)
     val["dpto_res"] = pd.to_numeric(val["dpto_res"], errors="coerce").astype("Int64")
