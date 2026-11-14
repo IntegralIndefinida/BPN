@@ -6,11 +6,22 @@ Estadísticas Vitales del DANE. Los scripts producen las salidas del análisis
 
 ## Requisitos
 
-- Python del venv `datascience`: `~/.venvs/datascience/bin/python`
-  (pandas, numpy, statsmodels, scipy, openpyxl, matplotlib; las versiones
-  exactas están en `requirements.txt`).
-- `dane-data` con los archivos de nacimientos 2005-2024 ya descargados
-  (`dd.eevv.available()`), instalado editable desde su repositorio.
+- Python 3.14 (probado con 3.14.10) y las versiones exactas de
+  `requirements.txt`, incluida `dane-data` v0.5.0. Desde la raíz del
+  repositorio:
+
+  ```
+  python3.14 -m venv .venv
+  .venv/bin/pip install -r v2/requirements.txt
+  ```
+
+- Los microdatos de nacimientos 2005-2025 y de defunciones fetales,
+  descargados una vez con `dane-data` (unos 1,6 GB de ZIP; quedan en
+  `~/dane_data_datos`, y `dd.eevv.available()` los lista):
+
+  ```
+  .venv/bin/python -c "import dane_data as dd; dd.eevv.download(range(2005, 2026), tipos=['nacimientos', 'fetales'])"
+  ```
 - Insumos en `datos/` (altitud por municipio e IPM departamental; fuentes en
   `datos/README.md`).
 
@@ -18,9 +29,9 @@ Estadísticas Vitales del DANE. Los scripts producen las salidas del análisis
 
 ```
 cd v2                                            # desde la raíz del repositorio
-~/.venvs/datascience/bin/python test_bpn.py      # pruebas de la lógica central
-~/.venvs/datascience/bin/python correr.py        # los 4 objetivos
-~/.venvs/datascience/bin/python correr.py 2 4    # solo los objetivos 2 y 4
+../.venv/bin/python test_bpn.py      # pruebas de la lógica central
+../.venv/bin/python correr.py        # los 4 objetivos
+../.venv/bin/python correr.py 2 4    # solo los objetivos 2 y 4
 ```
 
 `correr.py` carga las celdas una vez y, por objetivo, escribe el log, el xlsx
