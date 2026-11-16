@@ -1,7 +1,7 @@
 # Insumos
 
 Los microdatos de nacimientos del DANE no están aquí: `dane-data` los
-descarga del Catálogo Central de Microdatos (ver `v2/README.md`). Estos son
+descarga del Catálogo Central de Microdatos (ver `README.md`). Estos son
 los otros dos insumos del análisis.
 
 | Archivo | Contenido | Fuente | Lo usa |

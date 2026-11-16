@@ -1,6 +1,6 @@
 #  Python 3.14 (probado con 3.14.10). Desde la raíz del repositorio:
 #    python3.14 -m venv .venv
-#    .venv/bin/pip install -r v2/requirements.txt
+#    .venv/bin/pip install -r requirements.txt
 dane-data @ git+https://github.com/IntegralIndefinida/DANE-data@v0.5.0
 matplotlib==3.10.9
 numpy==2.4.4

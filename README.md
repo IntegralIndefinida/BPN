@@ -12,7 +12,7 @@ Estadísticas Vitales del DANE. Los scripts producen las salidas del análisis
 
   ```
   python3.14 -m venv .venv
-  .venv/bin/pip install -r v2/requirements.txt
+  .venv/bin/pip install -r requirements.txt
   ```
 
 - Los microdatos de nacimientos 2005-2025 y de defunciones fetales,
@@ -28,10 +28,9 @@ Estadísticas Vitales del DANE. Los scripts producen las salidas del análisis
 ## Ejecución
 
 ```
-cd v2                                            # desde la raíz del repositorio
-../.venv/bin/python test_bpn.py      # pruebas de la lógica central
-../.venv/bin/python correr.py        # los 4 objetivos
-../.venv/bin/python correr.py 2 4    # solo los objetivos 2 y 4
+.venv/bin/python test_bpn.py      # pruebas de la lógica central
+.venv/bin/python correr.py        # los 4 objetivos
+.venv/bin/python correr.py 2 4    # solo los objetivos 2 y 4
 ```
 
 `correr.py` carga las celdas una vez y, por objetivo, escribe el log, el xlsx

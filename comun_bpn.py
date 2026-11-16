@@ -28,7 +28,7 @@ import dane_data as dd
 
 # 0. RUTAS Y AÑOS
 
-REPO = Path(__file__).resolve().parents[1]        # raíz del repositorio
+REPO = Path(__file__).resolve().parent             # raíz del repositorio
 DATOS = REPO / "datos"                            # insumos versionados
 SALIDAS = REPO / "resultados"                     # gráficos, xlsx y logs
 PROCESADOS = SALIDAS / "procesados"               # celdas intermedias (parquet)
