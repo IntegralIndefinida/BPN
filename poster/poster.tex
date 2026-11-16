@@ -1,0 +1,210 @@
+\documentclass[final]{beamer}
+\usepackage[size=custom,width=90,height=142,scale=1.25]{beamerposter}
+\usetheme{default}
+\usepackage{fontspec}
+\setmainfont{Nimbus Sans} % Sustituta compatible con Helvetica disponible en el sistema.
+\setsansfont{Nimbus Sans}
+\usepackage[spanish,es-nodecimaldot]{babel}
+\usepackage{graphicx,booktabs,array,tikz,xcolor}
+\usepackage[most]{tcolorbox}
+\usepackage{ragged2e}
+\usepackage{hyperref}
+% En el repositorio: poster/ junto a resultados/. El segundo path permite
+% compilar esta copia de preparación desde el directorio de trabajo actual.
+\graphicspath{{../resultados/}{../../../3. Metodologia/BPN/resultados/}}
+\definecolor{navy}{HTML}{4B658E}
+\definecolor{blue}{HTML}{3F6291}
+\definecolor{teal}{HTML}{2A9D9C}
+\definecolor{violet}{HTML}{7774D6}
+\definecolor{pale}{HTML}{DCE8E6}
+\definecolor{ink}{HTML}{2B303A}
+\definecolor{muted}{HTML}{5A6270}
+\definecolor{headerblue}{HTML}{4B658E}
+\definecolor{headerteal}{HTML}{2A9D9C}
+\definecolor{sidebarbg}{HTML}{DCE8E6}
+\definecolor{titleblue}{HTML}{3A5A8C}
+\definecolor{textdark}{HTML}{2B303A}
+\definecolor{textmuted}{HTML}{5A6270}
+\definecolor{barbg}{HTML}{CBD5E1}
+\definecolor{barfill}{HTML}{3F6291}
+\setbeamercolor{normal text}{fg=ink,bg=white}
+\setbeamercolor{block title}{fg=white,bg=navy}
+\setbeamertemplate{navigation symbols}{}
+\setbeamertemplate{itemize items}[circle]
+\setlength{\columnsep}{1.1cm}
+\setlength{\parskip}{0.22em}
+\newcommand{\sectionbar}[2]{\par\noindent{\color{titleblue}\large\bfseries #1\hspace{0.25em}#2}\par\vspace{0.10cm}{\color{barfill}\hrule height 0.65pt}\par\vspace{0.50cm}}
+\newtcolorbox{sidebox}[1][]{colback=pale,colframe=pale,boxrule=0pt,arc=2.5mm,left=10mm,right=10mm,top=11mm,bottom=11mm,before skip=0pt,after skip=0pt,fontupper=\normalsize,width=0.89\linewidth,center,#1}
+\newtcolorbox{resultbox}[1][]{colback=white,colframe=sidebarbg,boxrule=0.8pt,arc=0.7mm,left=3mm,right=3mm,top=2mm,bottom=2mm,fontupper=\normalsize,#1}
+\newcommand{\chart}[2]{\begin{center}\includegraphics[width=\linewidth,height=#1,keepaspectratio]{#2}\end{center}}
+\newcommand{\smallchart}[2]{\begin{center}\includegraphics[width=\linewidth,height=#1,keepaspectratio]{#2}\end{center}}
+\begin{document}
+\begin{frame}[t]
+\begin{tcolorbox}[enhanced,colback=navy,colframe=navy,interior style={left color=headerblue,right color=headerteal},boxrule=0mm,arc=1mm,left=5mm,right=5mm,top=4mm,bottom=4mm]
+\begin{columns}[c,totalwidth=\linewidth]
+\begin{column}{0.28\linewidth}
+\begin{minipage}[c]{0.25\linewidth}
+\centering\includegraphics[width=4.6cm]{logo-udc.png}
+\end{minipage}\hfill
+\begin{minipage}[c]{0.71\linewidth}
+\color{white}\raggedright
+{\fontsize{39}{23}\selectfont\bfseries Universidad de Cartagena\par}
+\vspace{1mm}
+{\fontsize{29}{20}\selectfont Programa de economía\par}
+{\fontsize{29}{20}\selectfont Economía de la salud 2026-2\par}
+\end{minipage}
+\end{column}
+\begin{column}{0.70\linewidth}
+\centering\color{white}
+\makebox[\linewidth][c]{\hspace*{-1cm}{\fontsize{70}{62}\selectfont\bfseries Bajo peso al nacer en Colombia}\hspace*{1cm}}\\[0.2cm]
+{\fontsize{21}{25}\selectfont Tendencias, edad gestacional y desigualdades territoriales, 2005–2024\hspace{0.6em}·\hspace{0.6em}Estudio poblacional con Estadísticas Vitales del DANE\hspace{0.6em}·\hspace{0.6em}Colombia}\\[0.3cm]
+{\fontsize{25}{20}\selectfont
+  \textbf{Autores:} Luis Armando Ramírez Bárcenas · Edinson Polo Arrieta \hspace{0.45cm}
+\textbf{Tutor:} Nelson Alvis Guzmán \hspace{0.45cm}
+}\\[0.15cm]
+{\fontsize{25}{20}\selectfont
+\textbf{Colaboradores:} Michel Álvarez Paternina · Jean Hernández Herazo
+}
+\end{column}
+\end{columns}
+\end{tcolorbox}
+\vspace{0.35cm}
+\begin{columns}[t,totalwidth=\linewidth]
+% Lateral: resumen, método y lectura
+\begin{column}{0.38\linewidth}
+\begin{sidebox}
+\sectionbar{}{INTRODUCCIÓN}
+El bajo peso al nacer (BPN, menos de 2.500 g) se asocia con consecuencias duraderas en salud, educación e ingresos. En Colombia, el BPN total aumentó mientras el BPN de nacidos a término disminuyó.
+\vspace{0.12cm}
+\sectionbar{}{OBJETIVO}
+Analizar la evolución de las desigualdades socioeconómicas y territoriales del BPN en Colombia entre 2005 y 2024.
+\vspace{0.12cm}
+\sectionbar{}{DATOS Y MÉTODOS}
+\begin{itemize}\setlength{\itemsep}{0.28em}
+\item 12,9 millones de nacidos vivos del DANE, 2005–2024; 33 unidades: 32 departamentos y Bogotá D.C.
+\item Tendencia anual y descomposición de Kitagawa por semana de gestación.
+\item Razones de prevalencia departamentales frente a cinco departamentos de referencia; índice de Theil y brechas, crudos y ajustados por altitud y edad materna.
+\item Regresión de Poisson e índice relativo de desigualdad (RII) para educación y afiliación materna.
+\item Índice de concentración ponderado por nacidos vivos, con bootstrap por departamento.
+\end{itemize}
+\end{sidebox}
+\vspace{1.1cm}
+\begin{sidebox}
+\sectionbar{}{HALLAZGOS CLAVE}
+\centering{\color{teal}\fontsize{39}{43}\selectfont\bfseries +2,97}\par
+\large puntos porcentuales en la prevalencia nacional\\
+\normalsize 8,29\% (2005) → 11,25\% (2024)
+\vspace{0.1cm}
+\begin{itemize}\setlength{\itemsep}{0.28em}
+\item El BPN aumentó en 30 de los 33 departamentos.
+\item La proporción de nacimientos en semana 37 pasó de 9,5\% a 16,7\% (2008–2024).
+\item Frente a educación superior, la RP fue 1,17 para BPN y 1,60 para BPN a término en madres sin educación o preescolar.
+\item La brecha educativa relativa creció cerca de 10\% por década.
+\end{itemize}
+\end{sidebox}
+\vspace{1.1cm}
+\begin{sidebox}
+\sectionbar{}{INTERPRETACIÓN}
+Las diferencias territoriales se reducen al ajustar por altitud y edad materna. La concentración observada favorece a departamentos de mejor posición; tras el ajuste, el índice baja y es compatible con cero.
+\end{sidebox}
+\end{column}
+
+% Área principal: resultados gráficos grandes, en el orden de la historia
+\begin{column}{0.60\linewidth}
+\sectionbar{1}{EVOLUCIÓN NACIONAL}
+\begin{resultbox}
+\centering La prevalencia subió de 8,29\% a 11,25\%; cuatro quintas partes del aumento ocurrieron desde 2015. La tendencia se mantiene al estandarizar por edad materna.
+\end{resultbox}
+\chart{32cm}{G1_bpn_nacional.png}
+\vspace{-0.2cm}
+\sectionbar{2}{EDAD GESTACIONAL: CRECE LA PROPORCIÓN EN SEMANA 37}
+\chart{32cm}{G15_semanas_gestacion.png}
+\vspace{-0.1cm}
+\begin{resultbox}
+Entre 2008 y 2024, la proporción de nacimientos en semana 37 pasó de 9,5\% a 16,7\%. Esta semana aportó 1,72 de los 2,45 puntos que subió el BPN; dentro de ella, el BPN pasó de 13,37\% a 17,96\%.
+\end{resultbox}
+\end{column}
+\end{columns}
+\vspace{0.2cm}
+% Resultados 3 y 4 ocupan todo el ancho disponible, incluido el espacio bajo el lateral.
+\begin{columns}[t,totalwidth=\linewidth]
+\begin{column}{0.49\linewidth}
+\sectionbar{3}{BRECHAS ENTRE DEPARTAMENTOS}
+\smallchart{25cm}{G7_RP_departamentos_quinquenios.png}
+En 2020–2024, Bogotá tuvo RP 2,15 frente a la referencia y 1,47 tras ajustar por altitud y edad. El ajuste reduce la dispersión a cerca de un tercio; La Guajira pasa al primer lugar. La desigualdad departamental no aumentó en veinte años.
+\end{column}
+\begin{column}{0.49\linewidth}
+\sectionbar{4}{CONCENTRACIÓN SOCIOECONÓMICA}
+\smallchart{25cm}{G11_curvas_estandarizadas_trienios.png}
+El índice observado bajó de 0,089 (2008–2010) a 0,081 (2022–2024). Tras ajustar por altitud y edad materna, cae a 0,021 y es compatible con cero.
+\end{column}
+\end{columns}
+\vspace{0.25cm}
+\sectionbar{5}{EL GRADIENTE EDUCATIVO EXISTE Y SE AMPLÍA}
+\begin{resultbox}[arc=2.5mm,left=6mm,right=6mm,top=3mm,bottom=3mm]
+\begin{columns}[t,totalwidth=\linewidth]
+\begin{column}{0.34\linewidth}
+\begin{minipage}[t]{\linewidth}\vspace{0pt}
+\RaggedRight\hyphenpenalty=10000\exhyphenpenalty=10000 Al comparar madres del mismo departamento y a igual altitud, una menor educación materna se asocia con más BPN, especialmente en nacidos a término.
+\end{minipage}
+\end{column}
+\begin{column}{0.63\linewidth}
+\begin{minipage}[t]{\linewidth}\vspace{0pt}
+\centering
+\begin{tabular*}{0.98\linewidth}{@{\extracolsep{\fill}}lcc@{}}
+\toprule
+Educación materna & BPN total & BPN a término \\
+\midrule
+Ninguna o preescolar & 1,17 (1,11–1,24) & 1,60 (1,44–1,77) \\
+Primaria & 1,04 (1,00–1,09) & 1,30 (1,24–1,35) \\
+Secundaria o media & 1,02 (0,99–1,05) & 1,15 (1,13–1,17) \\
+\bottomrule
+\end{tabular*}
+\par\vspace{2mm}
+\RaggedRight\small RP frente a educación superior (IC 95\%), 2008–2024. El gradiente relativo aumentó cerca de 10\% por década.
+\end{minipage}
+\end{column}
+\end{columns}
+\end{resultbox}
+\vspace{-0.1cm}
+\begin{tcolorbox}[colback=headerblue,colframe=headerblue,boxrule=0pt,arc=2.5mm,left=11mm,right=11mm,top=3mm,bottom=2mm]
+\color{white}\makebox[\linewidth][c]{{\large\bfseries CONCLUSIONES}}\par\vspace{0.1cm}
+\begin{columns}[t,totalwidth=\linewidth]
+\begin{column}{0.23\linewidth}
+El BPN aumentó casi 3 puntos; la semana 37 aportó 1,72 puntos del aumento desde 2008.
+\end{column}
+\begin{column}{0.23\linewidth}
+Las diferencias departamentales dependen en parte de altitud y composición, y no crecieron en veinte años.
+\end{column}
+\begin{column}{0.23\linewidth}
+Las madres con menor educación presentan más BPN, sobre todo a término, y la brecha se amplía.
+\end{column}
+\begin{column}{0.23\linewidth}
+La desigualdad socioeconómica aparece al comparar madres; tras el ajuste, la concentración territorial es compatible con cero.
+\end{column}
+\end{columns}
+\end{tcolorbox}
+\vspace{-0.3cm}
+\begin{columns}[t,totalwidth=\linewidth]
+\begin{column}{0.49\linewidth}
+\begin{tcolorbox}[colback=sidebarbg,colframe=sidebarbg,boxrule=0pt,arc=2.5mm,left=10mm,right=10mm,top=1.5mm,bottom=1.5mm]
+{\footnotesize
+\textbf{LIMITACIONES.} Estudio observacional: describe asociaciones, no causas. El peso se analiza agrupado; la semana 37 se separa solo desde 2008; el análisis territorial compara 33 unidades.\\[1mm]
+\textbf{FUENTE.} DANE, Estadísticas Vitales, nacimientos 2005–2024. Cálculos propios. Código: \href{https://github.com/IntegralIndefinida/BPN}{github.com/IntegralIndefinida/BPN}.
+}
+\end{tcolorbox}
+\end{column}
+\begin{column}{0.49\linewidth}
+\begin{tcolorbox}[colback=sidebarbg,colframe=sidebarbg,boxrule=0pt,arc=2.5mm,left=10mm,right=10mm,top=1.5mm,bottom=1.5mm]
+{\footnotesize
+\textbf{REFERENCIAS.}\\
+Guarnizo-Herreño et al. (2021). PLOS ONE, 16(7), e0255150.\\
+Silveira et al. (2019). International Journal of Epidemiology, 48(Supl. 1), i46–i53.\\
+Kakwani et al. (1997). Journal of Econometrics, 77(1), 87–103.\\
+Jensen y Moore (1997). American Journal of Public Health, 87(6), 1003–1007.
+}
+\end{tcolorbox}
+\end{column}
+\end{columns}
+\end{frame}
+\end{document}
