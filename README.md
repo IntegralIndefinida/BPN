@@ -4,6 +4,12 @@ Análisis de bajo peso al nacer (BPN) con microdatos de nacimientos de las
 Estadísticas Vitales del DANE. Los scripts producen las salidas del análisis
 (xlsx por objetivo, gráficos G1–G15 y logs), leyendo los datos con `dane-data`.
 
+## Póster
+
+[Abrir el póster completo en PDF](poster/poster.pdf).
+
+![Vista previa del póster sobre bajo peso al nacer en Colombia](poster/poster-preview.jpg)
+
 ## Requisitos
 
 - Python 3.14 (probado con 3.14.10) y las versiones exactas de
